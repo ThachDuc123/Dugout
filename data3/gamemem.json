@@ -1,0 +1,102 @@
+{
+ "fields": {
+  "grade:GK": {
+   "bit": 274,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.9887
+  },
+  "grade:CB": {
+   "bit": 268,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.4624
+  },
+  "grade:LB": {
+   "bit": 270,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.4038
+  },
+  "grade:RB": {
+   "bit": 272,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.4072
+  },
+  "grade:DMF": {
+   "bit": 260,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.3846
+  },
+  "grade:CMF": {
+   "bit": 262,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.4054
+  },
+  "grade:LMF": {
+   "bit": 264,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.488
+  },
+  "grade:RMF": {
+   "bit": 266,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.4779
+  },
+  "grade:AMF": {
+   "bit": 258,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.3766
+  },
+  "grade:LWF": {
+   "bit": 253,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.3749
+  },
+  "grade:RWF": {
+   "bit": 256,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.3748
+  },
+  "grade:SS": {
+   "bit": 251,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.6571
+  },
+  "grade:CF": {
+   "bit": 249,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.4289
+  },
+  "style": {
+   "bit": 235,
+   "transform": "database",
+   "score": 1.0,
+   "runner_up": 0.1182
+  },
+  "foot": {
+   "bit": 31,
+   "transform": "same",
+   "score": 1.0,
+   "runner_up": 0.5126
+  }
+ },
+ "checks": {
+  "position": 1.0,
+  "players": 27155
+ },
+ "seconds": 4.85,
+ "version": 2,
+ "exe": "1774509624_458910720",
+ "at": "2026-10-01 02:00:08"
+}

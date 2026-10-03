@@ -1,0 +1,483 @@
+-- Dugout: đổi cầu thủ ngay trong game (Master League FL26): vị trí đăng ký, học vị trí (ngay,
+-- hoặc tập theo thời gian), phong cách chơi, chân thuận (cầu thủ thuận hai chân).
+--
+-- Một trang trong overlay của Sider: nhấn Space để mở overlay, nhấn phím 1 (hoặc `) cho tới
+-- trang "DUGOUT". Module này chỉ là màn hình: dữ liệu, kiểm tra và việc sửa do app Dugout
+-- (SiderAddons\Dugout) làm, qua các file trong content\dugout\:
+--   state.txt   Dugout ghi: đội hình, hạng từng vị trí, độ phù hợp, phong cách, tập luyện, kết quả lệnh
+--   request.txt module ghi: lệnh của bạn
+--   alive.txt   Dugout ghi mỗi 2 giây khi game đang mở (để biết Dugout có đang chạy)
+-- Khi trang này đang hiện, phím bấm không đi vào game (để mũi tên / Enter không bấm nhầm menu).
+
+local m = { version = "1.1" }
+
+local VK_BACK, VK_ENTER, VK_ESC = 0x08, 0x0D, 0x1B
+local VK_PGUP, VK_PGDN, VK_LEFT, VK_UP, VK_RIGHT, VK_DOWN = 0x21, 0x22, 0x25, 0x26, 0x27, 0x28
+local VK_F5, VK_L, VK_U, VK_S, VK_T, VK_F, VK_P = 0x74, 0x4C, 0x55, 0x53, 0x54, 0x46, 0x50
+local KEY_NAME = { [VK_ENTER] = "Enter", [VK_L] = "L", [VK_U] = "U", [VK_T] = "T", [VK_F] = "F" }
+
+local POS = { "GK", "CB", "LB", "RB", "DMF", "CMF", "LMF", "RMF", "AMF", "LWF", "RWF", "SS", "CF" }
+local POS_VI = { GK = "Thủ môn", CB = "Trung vệ", LB = "Hậu vệ trái", RB = "Hậu vệ phải", DMF = "Tiền vệ phòng ngự",
+                 CMF = "Tiền vệ trung tâm", LMF = "Tiền vệ trái", RMF = "Tiền vệ phải", AMF = "Tiền vệ tấn công",
+                 LWF = "Tiền đạo cánh trái", RWF = "Tiền đạo cánh phải", SS = "Hộ công", CF = "Tiền đạo cắm" }
+local GRADE = { [0] = "C", [1] = "B", [2] = "A" }
+local VERDICT = { [0] = "Không hợp", [1] = "Tạm được", [2] = "Hợp", [3] = "Rất hợp" }
+local FOOT = { [0] = "Phải", [1] = "Trái" }
+local ROWS = 14                 -- players per page
+local STYLE_ROWS = 14
+local CONFIRM_SECONDS = 6
+local WAIT_SECONDS = 25
+
+local dir, exe
+local st = { raw = nil, header = nil, result = nil, players = {}, order = {}, checked = -1 }
+local ui = { screen = "list", cursor = 1, top = 1, sel = nil, pcursor = 1, scursor = 1, stop = 1, pending = nil,
+             waiting = nil, waiting_at = 0, note = "", opened = false }
+local seq = os.time() * 10
+local cdef_done = false
+
+local function pos_name(i)
+    return POS[(tonumber(i) or -1) + 1] or "?"
+end
+
+local function split(line)
+    local out, at = {}, 1
+    while true do
+        local a = string.find(line, "\t", at, true)
+        if not a then
+            out[#out + 1] = string.sub(line, at)
+            return out
+        end
+        out[#out + 1] = string.sub(line, at, a - 1)
+        at = a + 1
+    end
+end
+
+local function read_file(path)
+    local f = io.open(path, "rb")
+    if not f then return nil end
+    local s = f:read("*a")
+    f:close()
+    return s
+end
+
+local function load_state()
+    local raw = read_file(dir .. "state.txt")
+    if not raw or raw == st.raw or not string.find(raw, "\nE\n", 1, true) then return end
+    st.raw = raw
+    local players, order, header, result = {}, {}, nil, nil
+    for line in string.gmatch(raw, "[^\n]+") do
+        local t = split(line)
+        local k = t[1]
+        if k == "H" then
+            header = { time = tonumber(t[2]) or 0, code = t[3] or "", msg = t[4] or "", team = t[5] or "", date = t[6] or "" }
+        elseif k == "R" then
+            result = { seq = t[2], ok = t[3] == "1", msg = t[4] or "" }
+        elseif k == "P" then
+            local p = { id = t[2], shirt = t[3] or "", name = t[4] or "", age = t[5] or "", reg = tonumber(t[6]) or -1,
+                        ovr = t[7] or "", played = tonumber(t[8]) or -1, sugg = tonumber(t[9]) or -1,
+                        sugg_v = tonumber(t[10]) or -1, undo_id = t[11] or "", undo_label = t[12] or "",
+                        editable = t[13] == "1", foot = tonumber(t[14]) or 0, wf = tonumber(t[15]) or 0,
+                        swapped = t[16] == "1", foot_ok = t[17] == "1", style = t[18] or "",
+                        style_id = tonumber(t[19]) or 0, style_ok = t[20] == "1",
+                        pos = {}, styles = {}, train = {} }
+            players[p.id] = p
+            order[#order + 1] = p
+        elseif k == "G" then
+            local p = players[t[2]]
+            if p then
+                local idx = tonumber(t[3]) or 0
+                p.pos[idx + 1] = { idx = idx, grade = tonumber(t[4]) or 0, ovr = tonumber(t[5]) or 0,
+                                   fit = tonumber(t[6]) or 0, v = tonumber(t[7]) or 0 }
+            end
+        elseif k == "Y" then
+            local p = players[t[2]]
+            if p then
+                p.styles[#p.styles + 1] = { id = tonumber(t[3]) or 0, label = t[4] or "", fit = tonumber(t[5]) or 0,
+                                            current = t[6] == "1", sugg = t[7] == "1" }
+            end
+        elseif k == "T" then
+            local p = players[t[2]]
+            if p then
+                p.train[(tonumber(t[3]) or 0) + 1] = { pct = tonumber(t[4]) or 0, eta = tonumber(t[5]) or 0, next = t[6] or "" }
+            end
+        end
+    end
+    st.header, st.result, st.players, st.order = header, result, players, order
+    if ui.waiting and result and result.seq == ui.waiting then
+        ui.waiting = nil
+        ui.note = result.msg == "" and "" or ((result.ok and "Xong: " or "Không được: ") .. result.msg)
+    end
+    if ui.cursor > #order then ui.cursor = math.max(1, #order) end
+end
+
+local function dugout_alive()
+    local raw = read_file(dir .. "alive.txt")
+    local t = raw and tonumber(string.match(raw, "%d+"))
+    return t ~= nil and math.abs(os.time() - t) <= 8
+end
+
+local function send(cmd, a, b)
+    seq = seq + 1
+    local f = io.open(dir .. "request.txt", "wb")
+    if not f then
+        ui.note = "Không ghi được yêu cầu cho Dugout (thư mục content\\dugout)."
+        return
+    end
+    f:write(tostring(seq) .. "\t" .. cmd .. "\t" .. tostring(a or "") .. "\t" .. tostring(b or "") .. "\tEND\n")
+    f:close()
+    ui.waiting, ui.waiting_at = tostring(seq), os.clock()
+end
+
+local function start_dugout()
+    if ffi == nil then
+        ui.note = "Không tự mở được Dugout ở đây: hãy mở Dugout.exe (Alt+Tab ra Desktop)."
+        return
+    end
+    if not cdef_done then
+        pcall(ffi.cdef, "unsigned int WinExec(const char *lpCmdLine, unsigned int uCmdShow);")
+        cdef_done = true
+    end
+    local ok, r = pcall(function() return ffi.C.WinExec('"' .. exe .. '" --no-window --from-game', 0) end)
+    if ok and tonumber(r) and tonumber(r) > 31 then
+        ui.note = "Đang khởi động Dugout (chạy ẩn, khoảng 10-20 giây)…"
+    else
+        ui.note = "Không mở được " .. exe .. ". Hãy mở Dugout.exe bằng tay."
+    end
+end
+
+local function selected()
+    return ui.sel and st.players[ui.sel]
+end
+
+-- ---------------------------------------------------------------- screens
+local function header_lines(out)
+    local h = st.header
+    local title = "DUGOUT · ĐỔI CẦU THỦ TRONG GAME"
+    if h and h.team ~= "" then title = title .. "  ·  " .. h.team end
+    if h and h.date ~= "" then title = title .. "  ·  " .. h.date end
+    out[#out + 1] = title
+    if h and h.msg ~= "" and h.code ~= "ready" then out[#out + 1] = h.msg end
+end
+
+local function list_screen(out)
+    local order = st.order
+    if #order == 0 then
+        out[#out + 1] = "Chưa có đội hình (Dugout chưa đọc xong save)."
+        return
+    end
+    if ui.cursor < ui.top then ui.top = ui.cursor end
+    if ui.cursor >= ui.top + ROWS then ui.top = ui.cursor - ROWS + 1 end
+    out[#out + 1] = string.format("Đội hình (%d cầu thủ) - chọn cầu thủ để xem vị trí, phong cách, chân thuận:", #order)
+    for i = ui.top, math.min(#order, ui.top + ROWS - 1) do
+        local p = order[i]
+        local line = (i == ui.cursor and "►  " or "     ") .. (p.shirt ~= "" and (p.shirt .. ". ") or "")
+                     .. p.name .. " (" .. p.age .. ")  |  " .. pos_name(p.reg) .. " " .. p.ovr
+        local hints = {}
+        if p.played >= 0 and p.played ~= p.reg then hints[#hints + 1] = "hay đá " .. pos_name(p.played) end
+        if p.sugg >= 0 then hints[#hints + 1] = "gợi ý " .. pos_name(p.sugg) .. " (" .. (VERDICT[p.sugg_v] or "") .. ")" end
+        for k = 1, 13 do
+            local tr = p.train[k]
+            if tr then hints[#hints + 1] = "đang tập " .. POS[k] .. " " .. tr.pct .. "%" end
+        end
+        if p.swapped then hints[#hints + 1] = "chân " .. string.lower(FOOT[p.foot] or "") .. " (đã đổi)" end
+        if #hints > 0 then line = line .. "  |  " .. table.concat(hints, " · ") end
+        out[#out + 1] = line
+    end
+    if #order > ROWS then
+        out[#out + 1] = string.format("     (%d-%d / %d)", ui.top, math.min(#order, ui.top + ROWS - 1), #order)
+    end
+    out[#out + 1] = ""
+    out[#out + 1] = "[↑↓] chọn   [Enter / →] xem cầu thủ   [PgUp / PgDn] trang   [F5] làm mới   ·   Space: đóng overlay"
+end
+
+local function player_screen(out)
+    local p = selected()
+    local reg = p.reg
+    local line = string.upper(p.name) .. " (" .. p.age .. " tuổi)  ·  đang đăng ký: " .. pos_name(reg) .. " (OVR " .. p.ovr .. ")"
+    if p.played >= 0 then line = line .. "  ·  trận gần đây đá: " .. pos_name(p.played) end
+    out[#out + 1] = line
+    local extra = "Phong cách: " .. p.style .. (p.style_ok and "  [P] đổi" or "")
+    extra = extra .. "    ·    Chân thuận: " .. (FOOT[p.foot] or "?") .. " (chân còn lại " .. p.wf .. "/4)"
+    if p.swapped then extra = extra .. " - Dugout đã đổi, tự áp lại mỗi lần mở game" end
+    if p.foot_ok then extra = extra .. (p.swapped and "  [F] trả chân gốc" or "  [F] đổi chân") end
+    out[#out + 1] = extra
+    for k = 1, 13 do
+        local q = p.pos[k]
+        if q then
+            local delta = q.ovr - (tonumber(p.ovr) or q.ovr)
+            local d = delta == 0 and "±0" or (delta > 0 and ("+" .. delta) or tostring(delta))
+            local s = (k == ui.pcursor and "►  " or "     ") .. POS[k] .. "  " .. POS_VI[POS[k]] .. "  |  hạng "
+                      .. (GRADE[q.grade] or "?") .. "  |  OVR " .. q.ovr
+            if q.idx == reg then
+                s = s .. "  |  đang đăng ký"
+            else
+                s = s .. " (" .. d .. ")  |  " .. (VERDICT[q.v] or "") .. " (phù hợp " .. q.fit .. ")"
+                if q.idx == p.sugg then s = s .. "   ◄ gợi ý" end
+            end
+            local tr = p.train[k]
+            if tr then s = s .. "   ·  đang tập → " .. tr.next .. ": " .. tr.pct .. "% (còn ~" .. tr.eta .. " ngày)" end
+            out[#out + 1] = s
+        end
+    end
+    out[#out + 1] = ""
+    if p.editable then
+        out[#out + 1] = "[Enter] đăng ký làm vị trí chính (vị trí hạng A/B)   [L] học ngay (lên 1 hạng)   [T] tập theo thời gian (bật/tắt)"
+        out[#out + 1] = "[U] hoàn tác lần sửa gần nhất   [← / Backspace] quay lại   [F5] làm mới"
+    else
+        out[#out + 1] = "Chỉ xem: Dugout chưa kết nối được bộ nhớ game để sửa.    [← / Backspace] quay lại    [F5] thử lại"
+    end
+    if p.undo_label ~= "" then out[#out + 1] = "Lần sửa gần nhất: " .. p.undo_label end
+end
+
+local function style_screen(out)
+    local p = selected()
+    local list = p.styles
+    out[#out + 1] = string.upper(p.name) .. " · PHONG CÁCH CHƠI  ·  hiện tại: " .. p.style .. "  ·  vị trí " .. pos_name(p.reg)
+    out[#out + 1] = "Các phong cách dùng được ở vị trí này, phù hợp nhất ở trên (theo chỉ số, thể hình, chân thuận):"
+    if ui.scursor > #list then ui.scursor = math.max(1, #list) end
+    if ui.scursor < ui.stop then ui.stop = ui.scursor end
+    if ui.scursor >= ui.stop + STYLE_ROWS then ui.stop = ui.scursor - STYLE_ROWS + 1 end
+    for i = ui.stop, math.min(#list, ui.stop + STYLE_ROWS - 1) do
+        local y = list[i]
+        local s = (i == ui.scursor and "►  " or "     ") .. y.label
+        if y.id ~= 0 then s = s .. "  |  phù hợp " .. y.fit .. "%" end
+        if y.current then s = s .. "  |  đang dùng" end
+        if y.sugg then s = s .. "   ◄ gợi ý" end
+        out[#out + 1] = s
+    end
+    out[#out + 1] = ""
+    out[#out + 1] = "[↑↓] chọn   [Enter] đổi sang phong cách này   [← / Backspace] quay lại"
+end
+
+-- ---------------------------------------------------------------- keys
+local function confirm(key, what, cmd, a, b)
+    local now = os.clock()
+    local pd = ui.pending
+    if pd and pd.key == key and pd.a == a and pd.b == b and now - pd.at <= CONFIRM_SECONDS then
+        ui.pending = nil
+        ui.note = "Đang gửi cho Dugout…"
+        send(cmd, a, b)
+    else
+        ui.pending = { key = key, a = a, b = b, at = now }
+        ui.note = "Nhấn " .. (KEY_NAME[key] or "phím đó") .. " lần nữa để xác nhận: " .. what
+    end
+end
+
+local function set_blocked(on)
+    if input ~= nil and input.set_blocked ~= nil then pcall(input.set_blocked, on) end
+end
+
+local function list_keys(vkey)
+    local n = #st.order
+    if n == 0 then return end
+    if vkey == VK_UP then ui.cursor = ui.cursor > 1 and ui.cursor - 1 or n
+    elseif vkey == VK_DOWN then ui.cursor = ui.cursor < n and ui.cursor + 1 or 1
+    elseif vkey == VK_PGUP then ui.cursor = math.max(1, ui.cursor - ROWS)
+    elseif vkey == VK_PGDN then ui.cursor = math.min(n, ui.cursor + ROWS)
+    elseif vkey == VK_ENTER or vkey == VK_RIGHT then
+        local p = st.order[ui.cursor]
+        ui.sel, ui.screen, ui.pending, ui.note = p.id, "player", nil, ""
+        ui.pcursor = (p.reg >= 0 and p.reg < 13) and p.reg + 1 or 1
+    end
+end
+
+local function style_keys(p, vkey)
+    local n = #p.styles
+    if vkey == VK_UP then ui.scursor = ui.scursor > 1 and ui.scursor - 1 or n; ui.pending = nil
+    elseif vkey == VK_DOWN then ui.scursor = ui.scursor < n and ui.scursor + 1 or 1; ui.pending = nil
+    elseif vkey == VK_LEFT or vkey == VK_BACK or vkey == VK_ESC then
+        ui.screen, ui.pending, ui.note = "player", nil, ""
+    elseif vkey == VK_ENTER and p.style_ok then
+        local y = p.styles[ui.scursor]
+        if not y then return end
+        if y.current then
+            ui.note = p.name .. " đang dùng phong cách này."
+        else
+            confirm(VK_ENTER, p.name .. " đổi sang phong cách " .. y.label, "style", p.id, y.id)
+        end
+    end
+end
+
+local function player_keys(p, vkey)
+    if vkey == VK_UP then ui.pcursor = ui.pcursor > 1 and ui.pcursor - 1 or 13; ui.pending = nil
+    elseif vkey == VK_DOWN then ui.pcursor = ui.pcursor < 13 and ui.pcursor + 1 or 1; ui.pending = nil
+    elseif vkey == VK_LEFT or vkey == VK_BACK or vkey == VK_ESC then
+        ui.screen, ui.pending, ui.note = "list", nil, ""
+    elseif vkey == VK_P then
+        if p.style_ok and #p.styles > 0 then
+            ui.screen, ui.pending, ui.note, ui.stop = "style", nil, "", 1
+            ui.scursor = 1
+            for i, y in ipairs(p.styles) do if y.current then ui.scursor = i end end
+        else
+            ui.note = "Chưa đổi được phong cách ở đây (Dugout chưa xác định chỗ lưu phong cách trong bộ nhớ game)."
+        end
+    elseif vkey == VK_F then
+        if not p.foot_ok then
+            ui.note = p.wf < 4 and (p.name .. " không thuận hai chân (chân còn lại " .. p.wf .. "/4): không đổi chân thuận.")
+                      or "Chưa đổi được chân thuận ở đây (Dugout chưa xác định chỗ lưu chân thuận trong bộ nhớ game)."
+        elseif p.swapped then
+            confirm(VK_F, p.name .. " dùng lại chân thuận gốc", "foot", p.id, "")
+        else
+            confirm(VK_F, p.name .. " đổi chân thuận " .. string.lower(FOOT[p.foot] or "") .. " → "
+                    .. string.lower(FOOT[1 - p.foot] or ""), "foot", p.id, "")
+        end
+    elseif not p.editable then
+        return
+    elseif vkey == VK_ENTER then
+        local q = p.pos[ui.pcursor]
+        if q and q.idx == p.reg and q.grade == 2 then
+            ui.note = POS[ui.pcursor] .. " đã là vị trí đăng ký."
+        elseif q and q.grade == 0 then
+            ui.note = p.name .. " chưa biết đá " .. POS[ui.pcursor] .. " (hạng C): nhấn L để học ngay, hoặc T để tập theo thời gian."
+        else
+            confirm(VK_ENTER, "đăng ký " .. POS[ui.pcursor] .. " làm vị trí chính của " .. p.name, "position", p.id, ui.pcursor - 1)
+        end
+    elseif vkey == VK_L then
+        local q = p.pos[ui.pcursor]
+        if q and q.grade >= 2 then
+            ui.note = p.name .. " đã thạo " .. POS[ui.pcursor] .. " (hạng A)."
+        else
+            confirm(VK_L, p.name .. " học ngay " .. POS[ui.pcursor] .. " (" .. GRADE[q and q.grade or 0] .. " → "
+                    .. GRADE[(q and q.grade or 0) + 1] .. ")", "learn", p.id, ui.pcursor - 1)
+        end
+    elseif vkey == VK_T then
+        local q = p.pos[ui.pcursor]
+        if p.train[ui.pcursor] then
+            confirm(VK_T, "dừng tập " .. POS[ui.pcursor] .. " cho " .. p.name, "train", p.id, ui.pcursor - 1)
+        elseif q and q.grade >= 2 then
+            ui.note = p.name .. " đã thạo " .. POS[ui.pcursor] .. " (hạng A)."
+        else
+            confirm(VK_T, p.name .. " tập " .. POS[ui.pcursor] .. " theo thời gian (khoảng 6 tuần mỗi hạng, đá ở vị trí đó thì nhanh hơn)",
+                    "train", p.id, ui.pcursor - 1)
+        end
+    elseif vkey == VK_U then
+        if p.undo_id == "" then
+            ui.note = "Không có lần sửa nào để hoàn tác."
+        else
+            confirm(VK_U, "hoàn tác \"" .. p.undo_label .. "\"", "undo", p.id, p.undo_id)
+        end
+    end
+end
+
+function m.key_down(ctx, vkey)
+    if not dugout_alive() then
+        if vkey == VK_S then start_dugout() end
+        return
+    end
+    local action = vkey == VK_F5 or vkey == VK_L or vkey == VK_U or vkey == VK_T or vkey == VK_F
+                   or (vkey == VK_ENTER and ui.screen ~= "list")
+    if ui.waiting and action then return end
+    if vkey == VK_F5 then
+        ui.note = ""
+        send("refresh")
+        return
+    end
+    if ui.screen == "list" then return list_keys(vkey) end
+    local p = selected()
+    if not p then
+        ui.screen = "list"
+        return
+    end
+    if ui.screen == "style" then return style_keys(p, vkey) end
+    return player_keys(p, vkey)
+end
+
+function m.overlay_on(ctx)
+    local now = os.clock()
+    if now - st.checked > 0.4 then
+        st.checked = now
+        load_state()
+        if ui.waiting and now - ui.waiting_at > WAIT_SECONDS then
+            ui.waiting = nil
+            ui.note = "Dugout không trả lời. Kiểm tra Dugout có đang chạy không."
+        end
+    end
+    local out = {}
+    if not dugout_alive() then
+        out[#out + 1] = "DUGOUT · ĐỔI CẦU THỦ TRONG GAME"
+        out[#out + 1] = "Dugout chưa chạy (cần app Dugout để đọc và sửa dữ liệu)."
+        out[#out + 1] = "Nhấn [S] để khởi động Dugout (chạy ẩn), hoặc mở Dugout.exe rồi quay lại trang này."
+        if ui.note ~= "" then out[#out + 1] = ui.note end
+        return table.concat(out, "\n")
+    end
+    if not ui.opened then            -- ask for fresh data once each time the page is opened
+        ui.opened = true
+        send("open")
+    end
+    header_lines(out)
+    if ui.screen ~= "list" and not selected() then ui.screen = "list" end
+    if ui.screen == "player" then player_screen(out)
+    elseif ui.screen == "style" then style_screen(out)
+    else list_screen(out) end
+    if ui.waiting then
+        out[#out + 1] = "Đang chờ Dugout…"
+    elseif ui.note ~= "" then
+        out[#out + 1] = ui.note
+    end
+    return table.concat(out, "\n")
+end
+
+function m.show(ctx)
+    set_blocked(true)
+    ui.pending, ui.opened = nil, false
+end
+
+function m.hide(ctx)
+    set_blocked(false)
+    ui.pending, ui.opened = nil, false
+end
+
+-- match.txt: trong trận, mỗi giây một lần: hai đội, tỉ số, đồng hồ (cho bản đồ trận đấu của Dugout)
+local live = { at = -10, was = false }
+
+local function write_match(text)
+    local f = io.open(dir .. "match.txt", "wb")
+    if f then
+        f:write(text)
+        f:close()
+    end
+end
+
+local function match_tick(ctx)
+    local now = os.clock()
+    if now - live.at < 1 then return end
+    live.at = now
+    local ok, s = false, nil
+    if match ~= nil and match.stats ~= nil then ok, s = pcall(match.stats) end
+    if not ok or type(s) ~= "table" then
+        if live.was then
+            write_match(tostring(os.time()) .. "\tnone\tEND\n")
+            live.was = false
+        end
+        return
+    end
+    live.was = true
+    local v = function(x) return x == nil and "" or tostring(x) end
+    write_match(table.concat({ tostring(os.time()), "match", v(ctx.home_team), v(ctx.away_team),
+        v(s.home_score), v(s.away_score), v(s.clock_minutes), v(s.clock_seconds), v(s.added_minutes),
+        v(s.period), v(s.pk_home_score), v(s.pk_away_score), v(ctx.tournament_id), "END" }, "\t") .. "\n")
+end
+
+function m.display_frame(ctx)
+    match_tick(ctx)
+end
+
+function m.gamepad_input(ctx, inputs)
+    match_tick(ctx)
+end
+
+function m.init(ctx)
+    local root = ctx.sider_dir
+    if string.sub(root, -1) ~= "\\" then root = root .. "\\" end
+    dir = root .. "content\\dugout\\"
+    exe = root .. "Dugout\\Dugout.exe"
+    ctx.register("overlay_on", m.overlay_on)
+    ctx.register("key_down", m.key_down)
+    ctx.register("show", m.show)
+    ctx.register("hide", m.hide)
+    pcall(ctx.register, "display_frame", m.display_frame)
+    pcall(ctx.register, "gamepad_input", m.gamepad_input)
+    log("Dugout " .. m.version .. ": trang đổi cầu thủ trong overlay (Space, rồi phím 1 tới trang DUGOUT)")
+end
+
+return m
