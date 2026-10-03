@@ -1,0 +1,464 @@
+"""Inbox: messages built only from what changed in the save between two loads (results,
+development, skills learned, injuries, transfers, offers, contracts, regens) plus the AI's
+updates. Nothing is invented: every message points at data the game wrote."""
+import datetime as dt
+import json
+import os
+
+import numpy as np
+
+from . import pesdb, terms
+
+POS = terms.POSITIONS
+
+
+def _d(date):
+    return date.isoformat() if isinstance(date, dt.date) else str(date)
+
+
+def _vn_date(iso):
+    d = dt.date.fromisoformat(iso)
+    return f'{d.day}/{d.month}/{d.year}'
+
+
+def fixture_key(f):
+    return f'{f.year:04d}-{f.month:02d}-{f.day:02d}:{f.tournament_id}:{f.home_team}:{f.away_team}'
+
+
+def round_label(f):
+    if f.stage in terms.STAGE_VI:
+        return terms.STAGE_VI[f.stage]
+    if f.stage <= 45:
+        return f'Vòng {f.stage + 1}'
+    return f'Vòng {f.stage - 45}'
+
+
+def rating10(rating, g=0, a=0, y=False, r=False):
+    """Dugout's 10-point rating of a match (shown to the manager; the AI keeps the game's): the game's rating
+    stretched around its average (6.0 -> 6.5) plus what the game under-rates: goals and assists. A hat-trick
+    with two assists (game 9.1) -> 10, a goal (7.1) -> 8.4, an ordinary match (6.0) -> 6.5, a poor one (5.0) -> 5.3."""
+    if not rating:
+        return None
+    v = 6.5 + 1.25 * (rating - 6.0) + 0.5 * (g or 0) + 0.25 * (a or 0) - (0.3 if y else 0) - (1.0 if r else 0)
+    return round(min(10.0, max(3.0, v)), 1)
+
+
+def match_record(snap, f):
+    """A finished (or scheduled) fixture of the managed club, in the form stored and shown."""
+    played = bool(f.flags & 64)
+    rec = {'key': fixture_key(f), 'date': f'{f.year:04d}-{f.month:02d}-{f.day:02d}', 'hour': f.kickoff_hour,
+           'comp': f.tournament_id, 'comp_name': snap.comp_name(f.tournament_id), 'round': round_label(f),
+           'home': f.home_team, 'away': f.away_team,
+           'home_name': snap.club_name(f.home_team), 'away_name': snap.club_name(f.away_team),
+           'played': played, 'hg': f.home_goals if played else None, 'ag': f.away_goals if played else None,
+           'venue': 'home' if f.home_team == snap.team_id else 'away'}
+    if played:
+        if f.home_extra_time or f.away_extra_time:
+            rec['et'] = [f.home_extra_time, f.away_extra_time]
+        if f.home_shootout or f.away_shootout:
+            rec['pens'] = [f.home_shootout, f.away_shootout]
+        for side, apps in (('home_players', f.home), ('away_players', f.away)):
+            rec[side] = [{'id': int(a.player_id), 'name': snap.player_name(a.player_id), 'min': a.minutes,
+                          'rating': round(a.rating_tenths / 10, 1) if a.rating_tenths else None,
+                          'g': a.goals, 'a': a.assists, 'y': bool(a.yellow or a.second_yellow), 'r': bool(a.red),
+                          'start': bool(a.started), 'pos': a.position_code} for a in apps]
+            for p in rec[side]:
+                p['r10'] = rating10(p['rating'], p['g'], p['a'], p['y'], p['r'])
+        mine, theirs = (f.home_goals, f.away_goals) if rec['venue'] == 'home' else (f.away_goals, f.home_goals)
+        if rec.get('pens') and mine == theirs:
+            mp, tp = rec['pens'] if rec['venue'] == 'home' else rec['pens'][::-1]
+            rec['outcome'] = 'W' if mp > tp else 'L'
+        else:
+            rec['outcome'] = 'W' if mine > theirs else 'L' if mine < theirs else 'D'
+    return rec
+
+
+_LIVE_LOGS = {}
+
+
+def _live_goals(folder):
+    """{fixture key: [(team id credited, scorer id or None), ...]} from Dugout's live logs of the matches
+    (live\\*.json: the timeline's goals), the newest log of each match; read again only when a file changes."""
+    out = {}
+    try:
+        names = sorted(f for f in os.listdir(folder) if f.endswith('.json'))
+    except OSError:
+        return out
+    for name in names:
+        path = os.path.join(folder, name)
+        try:
+            mt = os.path.getmtime(path)
+            hit = _LIVE_LOGS.get(path)
+            if hit is None or hit[0] != mt:
+                with open(path, encoding='utf-8') as f:
+                    s = json.load(f)
+                me = s.get('home') if (s.get('fixture') or {}).get('venue', 'home') == 'home' else s.get('away')
+                goals = []
+                for it in s.get('timeline') or []:
+                    if it.get('kind') == 'goal' and it.get('team') in ('me', 'opp'):
+                        team = me if it['team'] == 'me' else (s.get('away') if me == s.get('home') else s.get('home'))
+                        goals.append((team, it.get('scorer'), bool(it.get('own'))))
+                hit = _LIVE_LOGS[path] = (mt, s.get('key'), goals)
+            if hit[1]:
+                out[hit[1]] = hit[2]                      # the newest log of a match wins (sorted by time)
+        except (OSError, ValueError, AttributeError):
+            continue
+    return out
+
+
+def own_goals(recs, folder):
+    """The save keeps each player's goals but not an own goal (it only counts in the score): the goals of a
+    side its players' do not add up to are own goals. Who scored them: Dugout's live log of the match (a goal
+    of one side whose scorer played for the other; at Arsenal - Preston 3-1 Jeremy Mbambi at 84').
+    Adds rec['og'] = {'home': [{'id', 'name'}...], 'away': [...]} (own goals credited to that side)."""
+    logs = None
+    for rec in recs:
+        if not rec.get('played') or rec.get('home_players') is None:
+            continue
+        et = rec.get('et') or [0, 0]
+        short = {}
+        for side, total in (('home', (rec['hg'] or 0) + et[0]), ('away', (rec['ag'] or 0) + et[1])):
+            n = total - sum(p['g'] or 0 for p in rec.get(side + '_players') or [])
+            if n > 0:
+                short[side] = n
+        if not short:
+            rec.pop('og', None)
+            continue
+        if logs is None:
+            logs = _live_goals(folder) if folder else {}
+        live = logs.get(rec['key']) or []
+        og = {}
+        for side, n in short.items():
+            other = rec.get(('away' if side == 'home' else 'home') + '_players') or []
+            names = {p['id']: p['name'] for p in other}
+            team = rec[side]
+            seen = [{'id': pid, 'name': names[pid]} for t, pid, own in live if t == team and pid in names]
+            og[side] = (seen + [{'id': None, 'name': None}] * n)[:n]
+        rec['og'] = og
+
+
+def fix_live_logs(folder, recs):
+    """After the save is read: who scored, scored an own goal, was booked, filled in the live log of the match
+    where the live map did not see it (a replay skipped, the ball not followed): the save's line-ups are the
+    truth. Goals the map named are kept when the save agrees; the others get the save's scorers (one left:
+    named; more: listed). Returns the number of logs changed."""
+    by_key = {r['key']: r for r in recs if r.get('played') and r.get('home_players') is not None}
+    try:
+        names = sorted(f for f in os.listdir(folder) if f.endswith('.json'))
+    except (OSError, TypeError):
+        return 0
+    newest = {}
+    for name in names:                                   # the newest log of each match
+        newest[name.split('_', 1)[1] if '_' in name else name] = name
+    changed = 0
+    for name in newest.values():
+        path = os.path.join(folder, name)
+        try:
+            with open(path, encoding='utf-8') as f:
+                s = json.load(f)
+        except (OSError, ValueError):
+            continue
+        rec = by_key.get(s.get('key'))
+        if rec is None or s.get('save_checked'):
+            continue
+        venue = (s.get('fixture') or {}).get('venue') or rec.get('venue', 'home')
+        my_side = 'home' if venue == 'home' else 'away'
+        team_of = {'me': my_side, 'opp': 'away' if my_side == 'home' else 'home'}
+        ppl = s.get('players') or {}
+        lab = lambda pid, nm: f'{nm} ({ppl[str(pid)]["num"]})' if (ppl.get(str(pid)) or {}).get('num') is not None else nm
+        notes = []
+        tl = s.get('timeline') or []
+        for t, side in team_of.items():
+            players = rec.get(side + '_players') or []
+            other = rec.get(('away' if side == 'home' else 'home') + '_players') or []
+            nm = {p['id']: p['name'] for p in players + other}
+            want = [p['id'] for p in players for _ in range(p['g'] or 0)]
+            own = [o['id'] for o in (rec.get('og') or {}).get(side) or []]
+            goals = [i for i in tl if i.get('kind') == 'goal' and i.get('team') == t]
+            left, left_own = list(want), list(own)
+            unnamed = []
+            for i in goals:                              # the map's names the save agrees with
+                if i.get('scorer') in left and not i.get('own'):
+                    left.remove(i['scorer'])
+                elif i.get('scorer') in left_own:
+                    left_own.remove(i['scorer'])
+                else:
+                    unnamed.append(i)
+            pool = [(p, False) for p in left] + [(p, True) for p in left_own if p] + \
+                   [(None, True)] * sum(1 for p in left_own if not p)
+            who = t == 'me' and 'Bạn' or 'Đối thủ'
+            for i in unnamed:
+                score = i.get('score')
+                tail = f'. Tỉ số {score[0]}–{score[1]}.' if score else '.'
+                ids = {p for p, o in pool}
+                if len(ids) == 1 and pool:               # one scorer left: this goal is his
+                    p, o = pool.pop(0)
+                    if p is None:
+                        i['text'] = f'{who}: bàn thắng, phản lưới nhà{tail}'
+                    else:
+                        i['text'] = f'{who}: {lab(p, nm.get(p, p))} ' + ('phản lưới nhà' if o else 'ghi bàn') + tail
+                    i.update(scorer=p, own=o, save=True)
+                elif pool:                                # several: the order is not in the save
+                    opts = ', '.join(dict.fromkeys(nm.get(p, 'phản lưới nhà') + (' (phản lưới)' if o and p else '')
+                                                   for p, o in pool))
+                    i['text'] = f'{who}: bàn thắng ({opts}: theo save, chưa rõ ai bàn nào){tail}'
+                    i['save'] = True
+            if unnamed:
+                notes.append(f'{len(unnamed)} bàn của {"đội bạn" if t == "me" else "đối thủ"}')
+            # cards: the booked ones the map did not name
+            booked = {p['id']: ('red' if p['r'] else 'yellow') for p in players if p['y'] or p['r']}
+            for i in tl:
+                if i.get('kind') == 'card' and i.get('pid') in booked:
+                    booked.pop(i['pid'])
+            cards = [i for i in tl if i.get('kind') == 'card' and not i.get('pid')]
+            for i in cards:
+                hit = [p for p, c in booked.items() if c == (i.get('card') or 'yellow')]
+                if len(hit) == 1 and (i.get('team') in (None, t)):
+                    p = hit[0]
+                    booked.pop(p)
+                    word = 'thẻ đỏ' if i.get('card') == 'red' else 'thẻ vàng'
+                    i.update(text=f'{who}: {lab(p, nm.get(p, p))} nhận {word} (theo save).', pid=p, team=t, save=True)
+                    notes.append(f'thẻ của {nm.get(p, p)}')
+        s['save_checked'] = True
+        s['save_notes'] = notes
+        try:
+            tmp = path + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(s, f, ensure_ascii=False)
+            os.replace(tmp, path)
+            changed += 1
+        except OSError:
+            pass
+    return changed
+
+
+def _scorers(players, og=None):
+    out = []
+    for p in players or []:
+        if p['g']:
+            out.append(p['name'] + (f' ({p["g"]})' if p['g'] > 1 else ''))
+    for o in og or []:
+        out.append(f'{o["name"]} (phản lưới nhà)' if o.get('name') else 'phản lưới nhà')
+    return ', '.join(out)
+
+
+def result_event(snap, rec, league_pos=None):
+    mine_home = rec['venue'] == 'home'
+    score = f'{rec["hg"]}–{rec["ag"]}'
+    title = f'{rec["home_name"]} {score} {rec["away_name"]}'
+    word = {'W': 'Thắng', 'D': 'Hòa', 'L': 'Thua'}[rec['outcome']]
+    lines = [f'{word} · {rec["comp_name"]} · {rec["round"]} · {_vn_date(rec["date"])}']
+    if rec.get('pens'):
+        lines.append(f'Luân lưu: {rec["pens"][0]}–{rec["pens"][1]}')
+    og = rec.get('og') or {}
+    hs, as_ = _scorers(rec.get('home_players'), og.get('home')), _scorers(rec.get('away_players'), og.get('away'))
+    if hs:
+        lines.append(f'Ghi bàn cho {rec["home_name"]}: {hs}')
+    if as_:
+        lines.append(f'Ghi bàn cho {rec["away_name"]}: {as_}')
+    mine = rec.get('home_players' if mine_home else 'away_players') or []
+    rated = [p for p in mine if p['rating']]
+    if rated:
+        best = max(rated, key=lambda p: (p.get('r10') or 0, p['rating']))
+        lines.append(f'Cầu thủ hay nhất: {best["name"]} ({best.get("r10") or best["rating"]} điểm)')
+    assists = [p['name'] + (f' ({p["a"]})' if p['a'] > 1 else '') for p in mine if p['a']]
+    if assists:
+        lines.append('Kiến tạo: ' + ', '.join(assists))
+    if league_pos:
+        lines.append(league_pos)
+    return {'date': rec['date'], 'kind': 'result', 'title': title, 'body': '\n'.join(lines),
+            'outcome': rec['outcome'], 'match': rec['key'], 'id': 'result:' + rec['key'],
+            'teams': [rec['home'], rec['away']]}
+
+
+def squad_state(snap, rows, extra):
+    """What is compared between loads, per squad/youth player."""
+    out = {}
+    for i in rows:
+        pid = int(snap.ids[i])
+        info = extra.get(pid, {})
+        out[str(pid)] = {'skills': str(int(snap.skills[i])), 'style': int(snap.style[i]),
+                         'grades': [int(g) for g in snap.grades[i]], 'ab': [int(v) for v in snap.abilities[i]],
+                         'ovr': int(snap.ovr[i]), 'peak': int(round(float(snap.out['peak'][i]))), 'age': int(snap.age[i]),
+                         'inj': int(info.get('inj') or 0), 'retiring': bool(info.get('retiring')),
+                         'contract': info.get('contract'), 'youth': bool(info.get('youth')),
+                         'advice': info.get('advice', ''), 'adv': info.get('adv', []),
+                         'training': info.get('training', [])}
+    return out
+
+
+def diff(snap, career, new_seen, played_now, first_run):
+    """Compare with the previous load and add the new messages to the career inbox."""
+    old = career.seen or {}
+    date = _d(snap.date)
+    events = []
+    old_sq = old.get('squad', {})
+    new_sq = new_seen['squad']
+
+    # ---- results (newest last), with the league position after the match
+    done_before = set(old.get('fixtures_done', []))
+    for rec in played_now:
+        if rec['key'] in done_before:
+            continue
+        if first_run and rec is not played_now[-1]:
+            ev = result_event(snap, rec)
+            ev['read'] = True
+            events.append(ev)
+            continue
+        pos_line = None
+        tid = rec['comp']
+        if tid in snap.regions and snap.regions[tid].table:
+            for row in snap.regions[tid].table:
+                if row.team_id == snap.team_id:
+                    pos_line = f'Vị trí trên bảng xếp hạng {rec["comp_name"]}: {row.position} ({row.points} điểm sau {row.played} trận)'
+        events.append(result_event(snap, rec, pos_line))
+
+    if first_run:
+        n_adv = sum(1 for v in new_sq.values() if v.get('advice'))
+        events.append({'date': date, 'kind': 'welcome', 'title': f'Dugout đã kết nối với {snap.team_name}',
+                       'body': f'Save {snap.save_path.split(chr(92))[-1]} · ngày {snap.date.day}/{snap.date.month}/{snap.date.year}.\n'
+                               f'Từ giờ, mỗi lần bạn lưu game, Dugout đọc lại save và cập nhật đội hình, kết quả, '
+                               f'chỉ số và dự đoán. Hộp thư này chỉ báo những gì thực sự thay đổi trong game.\n'
+                               f'{n_adv} cầu thủ đang có gợi ý phát triển (xem mục Đội hình, biểu tượng 💡).'})
+        for ev in events:
+            career.add_event(ev)
+        return
+
+    # ---- squad membership
+    old_ids, new_ids = set(old_sq), set(new_sq)
+    for pid in sorted(new_ids - old_ids):
+        i = snap.row.get(int(pid))
+        if i is None:
+            continue
+        if new_sq[pid].get('youth'):
+            events.append({'date': date, 'kind': 'youth', 'title': f'Cầu thủ trẻ mới: {snap.names[i]}',
+                           'body': f'{snap.names[i]} ({snap.age[i]} tuổi, {POS[snap.main_pos[i]]}) vào đội trẻ. '
+                                   f'OVR {int(snap.ovr[i])}, AI dự đoán ngưỡng {int(round(float(snap.out["peak"][i])))}.',
+                           'players': [int(pid)]})
+        else:
+            events.append({'date': date, 'kind': 'transfer', 'title': f'{snap.names[i]} gia nhập CLB',
+                           'body': f'{snap.names[i]} ({snap.age[i]} tuổi, {POS[snap.main_pos[i]]}, OVR {int(snap.ovr[i])}) '
+                                   f'đã có tên trong đội hình. AI dự đoán ngưỡng {int(round(float(snap.out["peak"][i])))}.',
+                           'players': [int(pid)]})
+    for pid in sorted(old_ids - new_ids):
+        i = snap.row.get(int(pid))
+        name = snap.names[i] if i is not None else f'Cầu thủ {pid}'
+        dest = snap.club_name(int(snap.team[i])) if i is not None and snap.team[i] else ''
+        was_youth = old_sq[pid].get('youth')
+        if was_youth and i is not None and snap.team[i] == snap.team_id:
+            events.append({'date': date, 'kind': 'youth', 'title': f'{name} được đôn lên đội một',
+                           'body': f'{name} rời đội trẻ và vào đội hình chính.', 'players': [int(pid)]})
+            continue
+        events.append({'date': date, 'kind': 'transfer', 'title': f'{name} rời CLB',
+                       'body': f'{name} không còn trong đội hình' + (f', hiện thuộc {dest}.' if dest else '.'),
+                       'players': [int(pid)]})
+
+    # ---- per player changes
+    growth_lines = []
+    for pid in sorted(new_ids & old_ids, key=lambda p: -new_sq[p]['ovr']):
+        a, b = old_sq[pid], new_sq[pid]
+        i = snap.row.get(int(pid))
+        if i is None:
+            continue
+        name = snap.names[i]
+        if b['age'] < a['age']:
+            continue                                     # regenerated in between: new person
+        ch = [(k, b['ab'][k] - a['ab'][k]) for k in range(25) if b['ab'][k] != a['ab'][k]]
+        if ch:
+            ch.sort(key=lambda kv: -abs(kv[1]))
+            parts = ', '.join(f'{terms.ABILITY_VI[terms.ABILITIES[k]]} {d:+d}' for k, d in ch[:6])
+            more = f' và {len(ch) - 6} chỉ số khác' if len(ch) > 6 else ''
+            ovr_part = f' — OVR {a["ovr"]} → {b["ovr"]}' if a['ovr'] != b['ovr'] else ''
+            growth_lines.append((int(pid), f'• {name}: {parts}{more}{ovr_part}'))
+        me = f'player:{pid}'
+        ns, os_ = set(pesdb.skill_list(int(b['skills']))), set(pesdb.skill_list(int(a['skills'])))
+        for k in sorted(ns - os_):
+            events.append({'date': date, 'kind': 'skill', 'from': me, 'from_name': name,
+                           'title': f'{name} đã học được kỹ năng {terms.SKILLS[k][0]}',
+                           'body': f'Thầy ơi, em vừa học được kỹ năng {terms.skill_label(k)}! Em sẽ thể hiện nó ở trận tới.',
+                           'players': [int(pid)]})
+        for k in sorted(os_ - ns):
+            events.append({'date': date, 'kind': 'skill', 'from': 'assistant',
+                           'title': f'{name} không còn kỹ năng {terms.SKILLS[k][0]}',
+                           'body': f'Kỹ năng {terms.skill_label(k)} của {name} đã được thay bằng kỹ năng khác.', 'players': [int(pid)]})
+        if b['style'] != a['style'] and b['style']:
+            events.append({'date': date, 'kind': 'style', 'from': me, 'from_name': name,
+                           'title': f'{name} đổi phong cách thi đấu',
+                           'body': f'Thầy ơi, em đã chuyển sang phong cách {terms.style_label(b["style"])} '
+                                   f'(trước đây: {terms.style_label(a["style"]) or "không có"}). Em sẽ thích nghi thật nhanh.',
+                           'players': [int(pid)]})
+        for p in range(13):
+            if b['grades'][p] > a['grades'][p]:
+                word = 'đã làm chủ' if b['grades'][p] == 2 else 'đã thích nghi với'
+                events.append({'date': date, 'kind': 'position',
+                               'title': f'{name} {word} vị trí {POS[p]}',
+                               'body': f'Hạng vị trí {POS[p]} ({terms.POS_VI[POS[p]]}): {"CBA"[a["grades"][p]]} → {"CBA"[b["grades"][p]]}.',
+                               'players': [int(pid)]})
+        if b['inj'] and not a['inj']:
+            events.append({'date': date, 'kind': 'injury', 'title': f'{name} bị chấn thương',
+                           'body': f'{name} không thể thi đấu khoảng {b["inj"]} ngày.', 'players': [int(pid)]})
+        elif a['inj'] and not b['inj']:
+            events.append({'date': date, 'kind': 'injury', 'title': f'{name} đã bình phục',
+                           'body': f'{name} đã sẵn sàng thi đấu trở lại.', 'players': [int(pid)]})
+        if b['retiring'] and not a['retiring']:
+            events.append({'date': date, 'kind': 'retire', 'from': me, 'from_name': name, 'title': f'{name} sẽ giải nghệ',
+                           'body': f'Thầy ơi, em đã quyết định giải nghệ khi mùa giải này kết thúc ({b["age"]} tuổi). '
+                                   f'Cảm ơn thầy vì tất cả.\n(Cầu thủ giải nghệ có thể trở lại ở tuổi 16 với cùng tên: regen.)',
+                           'players': [int(pid)]})
+        if abs(b['peak'] - a['peak']) >= 2 and b['age'] <= 30:
+            faster = b['peak'] > a['peak']
+            events.append({'date': date, 'kind': 'ai',
+                           'title': f'AI cập nhật: {name} phát triển {"nhanh" if faster else "chậm"} hơn dự đoán',
+                           'body': f'Ngưỡng dự đoán mới {b["peak"]} (trước đó {a["peak"]}), OVR hiện tại {b["ovr"]}. '
+                                   f'AI học tốc độ riêng của cầu thủ từ các lần bạn lưu game.',
+                           'players': [int(pid)]})
+        started = [t for t in b.get('training') or [] if t not in (a.get('training') or []) and t[2] == 'game'
+                   and t[0] != 'position']        # a position also rises from playing there: not news
+        if started and 'training' in a:
+            what = {'style': 'phong cách', 'skill': 'kỹ năng'}
+            lines = [f'• {what[t[0]]} {t[1]}' for t in started]
+            events.append({'date': date, 'kind': 'training', 'from': 'assistant',
+                           'title': f'{name} đang tập luyện trong game',
+                           'body': f'Tôi thấy {name} đã được xếp tập trong game:\n' + '\n'.join(lines)
+                                   + '\nGợi ý cùng loại tạm ẩn; tôi theo dõi tiến độ trong thẻ 💡 Phát triển và báo khi xong.',
+                           'players': [int(pid)]})
+        new_tasks = {(t[0], t[1]) for t in b.get('adv') or []} - {(t[0], t[1]) for t in a.get('adv') or []}
+        if b.get('advice') and new_tasks:
+            events.append({'date': date, 'kind': 'advice', 'title': f'Gợi ý phát triển mới cho {name}',
+                           'body': f'Tôi có vài đề xuất tập luyện cho {name}:\n{b["advice"]}', 'players': [int(pid)],
+                           'advice_struct': b.get('adv') or []})
+    if growth_lines:
+        events.append({'date': date, 'kind': 'growth', 'title': f'Báo cáo phát triển: {len(growth_lines)} cầu thủ thay đổi chỉ số',
+                       'body': '\n'.join(l for _, l in growth_lines), 'players': [p for p, _ in growth_lines]})
+
+    # ---- offers and agreements
+    old_ag = set(old.get('agreements', []))
+    for ag in new_seen.get('agreements_full', []):
+        if ag['key'] in old_ag:
+            continue
+        events.append(ag['event'])
+
+    # ---- contracts expiring this season (once per season)
+    season_end = snap.date.year if snap.date.month < 7 else snap.date.year + 1
+    if old.get('contract_notice') != season_end and (snap.date.month >= 1 and snap.date.month < 7):
+        expiring = [(snap.player_name(int(pid)), v) for pid, v in new_sq.items()
+                    if v.get('contract') and v['contract'][0] <= season_end and not v.get('youth')]
+        if expiring:
+            events.append({'date': date, 'kind': 'contract', 'title': f'{len(expiring)} hợp đồng hết hạn cuối mùa',
+                           'body': '\n'.join(f'• {n}: hết hạn {c[2]}/{c[1]}/{c[0]}' for n, c in expiring),
+                           'players': []})
+        new_seen['contract_notice'] = season_end
+    else:
+        new_seen['contract_notice'] = old.get('contract_notice')
+
+    # ---- regens in the world
+    old_regens = old.get('regens', 0)
+    if new_seen['regens'] > old_regens:
+        new = new_seen['regens'] - old_regens
+        top = new_seen.get('regen_top', [])
+        events.append({'date': date, 'kind': 'regen', 'title': f'{new} cầu thủ tái sinh (regen) mới',
+                       'body': 'Những cầu thủ giải nghệ đã trở lại ở tuổi 16 với cùng tên. AI đã tính lại dự đoán từ chỉ số mới.\n'
+                               + '\n'.join(top[:6]), 'players': []})
+
+    for ev in events:
+        career.add_event(ev)

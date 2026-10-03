@@ -1,0 +1,39 @@
+// Dugout.exe: starts FL26 Dugout without a console window.
+// It runs the app's own Python (.venv\Scripts\pythonw.exe -m dugout) from the folder Dugout.exe
+// sits in. If Dugout is already running, the app only brings its window back.
+// Build: build_launcher.ps1 (uses the C# compiler that ships with Windows).
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Windows.Forms;
+
+static class DugoutLauncher
+{
+    [STAThread]
+    static void Main(string[] args)
+    {
+        string dir = AppDomain.CurrentDomain.BaseDirectory;
+        string py = Path.Combine(dir, ".venv", "Scripts", "pythonw.exe");
+        if (!File.Exists(py))
+        {
+            MessageBox.Show("Không tìm thấy Python của Dugout:\n" + py +
+                            "\n\nHãy giữ Dugout.exe trong thư mục Dugout (cùng thư mục .venv).",
+                            "Dugout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        var psi = new ProcessStartInfo(py, "-X utf8 -m dugout " + string.Join(" ", args))
+        {
+            WorkingDirectory = dir,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        try
+        {
+            Process.Start(psi);
+        }
+        catch (Exception e)
+        {
+            MessageBox.Show("Không mở được Dugout:\n" + e.Message, "Dugout", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+}

@@ -1,0 +1,2140 @@
+'use strict';
+// FL26 Dugout - UI. Everything for a save arrives in one bundle, so switching pages is instant.
+const POS = ['GK', 'CB', 'LB', 'RB', 'DMF', 'CMF', 'LMF', 'RMF', 'AMF', 'LWF', 'RWF', 'SS', 'CF'];
+const POS_VI = {GK: 'Thủ môn', CB: 'Trung vệ', LB: 'Hậu vệ trái', RB: 'Hậu vệ phải', DMF: 'Tiền vệ phòng ngự',
+  CMF: 'Tiền vệ trung tâm', LMF: 'Tiền vệ trái', RMF: 'Tiền vệ phải', AMF: 'Tiền vệ tấn công',
+  LWF: 'Tiền đạo cánh trái', RWF: 'Tiền đạo cánh phải', SS: 'Hộ công', CF: 'Tiền đạo cắm'};
+const SPOT = {CF: [50, 8], SS: [50, 20], LWF: [16, 14], RWF: [84, 14], AMF: [50, 31], LMF: [13, 42], RMF: [87, 42],
+  CMF: [50, 45], DMF: [50, 59], LB: [14, 69], RB: [86, 69], CB: [50, 77], GK: [50, 92]};
+// VH21 ability names
+const AB = {
+  offensive_awareness: 'Tư duy ATK', ball_control: 'Kiểm soát bóng', dribbling: 'Rê bóng',
+  tight_possession: 'Kiểm soát trong không gian hẹp', low_pass: 'Chuyền sệt', lofted_pass: 'Chuyền bổng',
+  finishing: 'Dứt điểm', heading: 'Đánh đầu', place_kicking: 'Đá phạt', curl: 'Độ xoáy',
+  speed: 'Tốc độ', acceleration: 'Bứt tốc', kicking_power: 'Lực sút', jump: 'Bật nhảy',
+  physical_contact: 'Tỳ đè', balance: 'Thăng bằng', stamina: 'Thể lực',
+  defensive_awareness: 'Tư duy DEF', ball_winning: 'Tranh bóng', aggression: 'Xông xáo',
+  gk_awareness: 'Tư duy TM', gk_catching: 'Bắt bóng TM', gk_clearing: 'Đẩy bóng TM', gk_reflexes: 'Phản xạ TM', gk_reach: 'Tầm với TM'};
+const GROUPS = [
+  ['Tấn công', ['offensive_awareness', 'ball_control', 'dribbling', 'tight_possession', 'low_pass', 'lofted_pass', 'finishing', 'heading', 'place_kicking', 'curl']],
+  ['Thể chất', ['speed', 'acceleration', 'kicking_power', 'jump', 'physical_contact', 'balance', 'stamina']],
+  ['Phòng ngự', ['defensive_awareness', 'ball_winning', 'aggression']],
+  ['Thủ môn', ['gk_awareness', 'gk_catching', 'gk_clearing', 'gk_reflexes', 'gk_reach']]];
+const KIND = {result: ['⚽', 'Kết quả'], growth: ['📈', 'Phát triển'], skill: ['✨', 'Kỹ năng'], style: ['🔄', 'Phong cách'],
+  position: ['🧭', 'Vị trí'], ai: ['🤖', 'AI'], advice: ['💡', 'Gợi ý'], transfer: ['⇄', 'Chuyển nhượng'],
+  offer: ['💰', 'Đề nghị'], injury: ['🩹', 'Chấn thương'], contract: ['📝', 'Hợp đồng'], retire: ['👋', 'Giải nghệ'],
+  youth: ['🌱', 'Đội trẻ'], regen: ['♻', 'Regen'], welcome: ['★', 'Dugout'], preview: ['🎯', 'Trận tới'],
+  form: ['📊', 'Phong độ'], playtime: ['🗣', 'Thời gian thi đấu'], review: ['🤖', 'Đối chiếu dự đoán'], board: ['🏛', 'Ban lãnh đạo'],
+  followup: ['↩', 'Trả lời'], training: ['⏳', 'Tập luyện']};
+// condition arrow as the game shows it: code 0-4 = E D C B A
+const ARROW = ['↓', '↘', '→', '↗', '↑'];
+const ARROW_VI = ['E · rất kém', 'D · kém', 'C · bình thường', 'B · tốt', 'A · rất tốt'];
+const arrow = c => c == null || c < 0 ? '' : `<span class="arw a${c}" title="Phong độ hôm nay (mũi tên trong game): ${ARROW_VI[c]}">${ARROW[c]}</span>`;
+const STYLES = ['Goal Poacher', 'Dummy Runner', 'Fox in the Box', 'Prolific Winger', 'Classic No. 10', 'Hole Player',
+  'Box-to-Box', 'Anchor Man', 'The Destroyer', 'Extra Frontman', 'Offensive Full-back', 'Defensive Full-back', 'Target Man',
+  'Creative Playmaker', 'Build Up', 'Offensive Goalkeeper', 'Defensive Goalkeeper', 'Roaming Flank', 'Cross Specialist',
+  'Orchestrator', 'Full-back Finisher'];
+const SKILLS = ['Scissors Feint', 'Double Touch', 'Flip Flap', 'Marseille Turn', 'Sombrero', 'Cross Over Turn',
+  'Cut Behind & Turn', 'Scotch Move', 'Step On Skill Control', 'Heading', 'Long Range Drive', 'Chip Shot Control',
+  'Long Range Shooting', 'Knuckle Shot', 'Dipping Shot', 'Rising Shots', 'Acrobatic Finishing', 'Heel Trick',
+  'First-time Shot', 'One-touch Pass', 'Through Passing', 'Weighted Pass', 'Pinpoint Crossing', 'Outside Curler', 'Rabona',
+  'No Look Pass', 'Low Lofted Pass', 'GK Low Punt', 'GK High Punt', 'Long Throw', 'GK Long Throw', 'Penalty Specialist',
+  'GK Penalty Saver', 'Malicia', 'Man Marking', 'Track Back', 'Interception', 'Acrobatic Clear', 'Captaincy', 'Super-sub',
+  'Fighting Spirit'];
+
+const S = {bundle: null, version: -1, page: 'home', dirty: {}, fixTab: 'list', fixComp: null, fixRound: null,
+  squadView: 'list', squadFilter: 'all', inboxSel: null, inboxFilter: 'all', inboxLimit: 150,
+  marketTab: 'plan', marketResult: null, drawer: null, drawerTab: 'overview', youthTab: 'youth',
+  inboxView: 'chat', thread: null, matchSel: 0, hSig: '', aiSig: '', dismissed: loadDismissed()};
+function loadDismissed() {
+  try { return new Set(JSON.parse(localStorage.getItem('dugout.dismissed') || '[]')); } catch (e) { return new Set(); }
+}
+
+// ------------------------------------------------------------------ helpers
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const ovrClass = v => v >= 90 ? 'o90' : v >= 85 ? 'o85' : v >= 80 ? 'o80' : v >= 75 ? 'o75' : v >= 70 ? 'o70' : 'o0';
+const ovr = v => v == null ? '' : `<span class="ovr ${ovrClass(v)}">${v}</span>`;
+const face = (id, cls = '') => `<img class="face ${cls}" loading="lazy" src="/face/${id}.png" onerror="this.style.visibility='hidden'">`;
+const initials = n => esc((n || '?').replace(/\b(FC|AFC|CF|SC|AC)\b/g, '').trim().split(/\s+/).map(w => w[0]).join('').slice(0, 3).toUpperCase());
+function crest(tid, name, size = '') {
+  if (!tid) return '';
+  const px = size === 'lg' ? 64 : size === 'md' ? 36 : 22;
+  return `<img class="crest ${size}" src="/badge/${tid}.png" alt="" onerror="this.outerHTML='<span class=&quot;crest crest-fb ${size}&quot; style=&quot;width:${px}px;height:${px}px&quot;>${initials(name)}</span>'">`;
+}
+const res = o => o ? `<span class="res ${o}">${{W: 'T', D: 'H', L: 'B'}[o]}</span>` : '';
+const vnDate = iso => { if (!iso) return ''; const [y, m, d] = iso.split('-').map(Number); return `${d}/${m}/${y}`; };
+const shortDate = iso => { if (!iso) return ''; const [, m, d] = iso.split('-').map(Number); return `${d}/${m}`; };
+const WD = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+const weekday = iso => WD[new Date(iso + 'T00:00:00').getDay()];
+function money(v) {
+  if (v == null || isNaN(v)) return '—';
+  if (v >= 1e9) return '€' + (v / 1e9).toFixed(2).replace('.', ',') + ' tỷ';
+  if (v >= 1e6) return '€' + (v / 1e6).toFixed(1).replace('.', ',') + ' tr';
+  if (v >= 1e3) return '€' + Math.round(v / 1e3) + ' nghìn';
+  return '€' + v;
+}
+function trendCell(p) {
+  if (p.trend > 0) return `<span class="up" title="Còn tăng tới khoảng ${p.reach_age} tuổi">▲ đang lên</span>`;
+  if (p.trend < 0) return '<span class="down">▼ đang giảm</span>';
+  return '<span class="flat">■ chững</span>';
+}
+function tags(p) {
+  let t = '';
+  if (p.regen) t += '<span class="tag regen" title="Cầu thủ giải nghệ đã tái sinh ở tuổi 16 (cùng tên). AI dự đoán lại từ chỉ số mới">Regen</span>';
+  if (p.youth) t += '<span class="tag youth">Đội trẻ</span>';
+  if (p.inj) t += `<span class="tag inj" title="Không thể thi đấu khoảng ${p.inj} ngày">Chấn thương</span>`;
+  if (p.listed) t += '<span class="tag listed">Rao bán</span>';
+  if (p.retiring) t += '<span class="tag ret">Sắp giải nghệ</span>';
+  if (p.pace != null && p.pace >= 1.5 && p.age <= 28) t += `<span class="tag fast" title="OVR cao hơn dự đoán ban đầu ${p.pace} điểm (so với cầu thủ cùng tuổi)">Nhanh hơn dự đoán</span>`;
+  if (p.pace != null && p.pace <= -2 && p.age <= 26) t += `<span class="tag slow" title="OVR thấp hơn dự đoán ban đầu ${-p.pace} điểm (so với cầu thủ cùng tuổi)">Chậm hơn dự đoán</span>`;
+  return t;
+}
+const chips = p => (p.best || []).map(b => `<span class="chip ${b.grade}" title="${POS_VI[b.pos]} · độ hợp ${b.fit}/100 · OVR ${b.ovr} · hạng ${b.grade}">${b.pos} ${b.fit}</span>`).join('');
+const pbar = (v, max, color) => `<div class="bar"><span style="width:${Math.max(0, Math.min(100, v / max * 100))}%;background:${color}"></span></div>`;
+const abColor = v => v >= 90 ? '#a855f7' : v >= 80 ? '#ef4444' : v >= 75 ? '#f97316' : v >= 70 ? '#eab308' : v >= 60 ? '#22c55e' : '#64748b';
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+  return r.json();
+}
+const post = (path, body) => fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Dugout': '1'}, body: JSON.stringify(body || {})});
+
+// ------------------------------------------------------------------ data
+async function loadBundle() {
+  try {
+    const b = await api('/api/bundle');
+    S.bundle = b;
+    S.version = b.version;
+    S.unreadSig = null;                     // the read marks of the bundle may be older: synced at the next poll
+    for (const k of ['home', 'inbox', 'match', 'live', 'fixtures', 'squad', 'market', 'youth', 'ai']) S.dirty[k] = true;
+    chrome();
+    render(S.page);
+    if (S.drawer) openPlayer(S.drawer, S.drawerTab, true);
+    $('#splash').classList.add('gone');
+  } catch (e) {
+    console.error('Dugout render', e && e.stack || e);
+    setTimeout(loadBundle, 800);
+  }
+}
+
+async function poll() {
+  try {
+    const s = await api('/api/status');
+    const dot = $('#sync-dot');
+    dot.className = 'dot ' + s.state;
+    const text = {ready: s.message, cached: 'Đang hiện dữ liệu lần trước · đang đọc save', syncing: s.message,
+      starting: 'Đang khởi động…', training: 'Đang huấn luyện AI…', waiting: s.message, error: 'Lỗi: ' + s.message}[s.state] || s.message;
+    $('#sync-text').textContent = text;
+    if (s.version > S.version) await loadBundle();
+    S.status = s;
+    const lv = s.live || {};
+    const b = lv.budget;
+    $('#live').innerHTML = b ? `<span title="Đọc trực tiếp từ game đang chạy">💶 Chuyển nhượng ${money(b.transfer)} · Lương ${money(b.salary)}</span>`
+      : `<span class="sub" title="${esc(lv.error || '')}">${esc(lv.text || '')}</span>`;
+    if (lv.version && lv.version !== S.liveVersion) {
+      S.liveVersion = lv.version;
+      try {
+        S.live = await api('/api/live');
+        for (const k of ['squad', 'market', 'youth']) S.dirty[k] = true;
+        if (['squad', 'market', 'youth'].includes(S.page)) render(S.page);
+      } catch (e) {}
+    }
+    if (s.unread_sig && s.unread_sig !== S.unreadSig && S.bundle) syncUnread(s.unread_sig);
+    renderHealth(s);
+    renderSaveAge(s);
+    renderWindow(s);
+    const ml = s.matchlive || {};
+    $('#nb-live').textContent = ml.state === 'live' ? 'LIVE' : ml.live ? '•' : '';
+    $('#nb-live').title = ml.state === 'live' ? 'Đang có bản đồ trận đấu' : ml.live ? 'Đang có trận' : '';
+    if (ml.live && ml.key && S.liveAutoKey !== ml.key) {      // a match started: open its live page once
+      S.liveAutoKey = ml.key;
+      if (S.page !== 'live') { closeDrawer(); show('live'); }
+    }
+    // Dugout was updated on the PC: the open page (the phone app too) reloads itself
+    if (s.build && !s.offline) {
+      if (!S.build) S.build = s.build;
+      else if (s.build !== S.build && !S.reloading) {
+        S.reloading = true;
+        winNote('Dugout vừa được cập nhật: đang tải bản mới…', 3000);
+        setTimeout(() => location.reload(), 1200);
+      }
+    }
+    if (s.remote !== S.remote) { S.remote = s.remote; document.body.classList.toggle('remote', !!s.remote); }
+    document.body.classList.toggle('pc-off', s.state === 'offline' || s.state === 'error');
+    const gameNow = !!(s.save && s.save.game_on);               // the edit tab says where edits go
+    if (gameNow !== S.gameWas) {
+      S.gameWas = gameNow;
+      if (S.cur && S.drawerTab === 'edit' && !$('#drawer').classList.contains('hidden')) drawDrawer();
+    }
+    if (S.page === 'ai') { renderAiLog(); renderAiStatus(); }
+  } catch (e) {
+    $('#sync-dot').className = 'dot error';
+    $('#sync-text').textContent = 'Mất kết nối với Dugout (cửa sổ đen đã đóng?)';
+  }
+  setTimeout(poll, 1500);
+}
+
+// data check banner (a save that reads wrong, an updated game / database)
+function renderHealth(s) {
+  const h = s.health || {};
+  const files = (h.files || []).filter(f => !S.dismissed.has(f.when + '|' + f.text.slice(0, 30)));
+  const warns = (h.items || []).filter(i => i.level === 'warn').length;
+  const sig = JSON.stringify([h.level, h.headline, files, warns]);
+  if (sig === S.hSig) return;
+  S.hSig = sig;
+  const bar = $('#hbar'), chip = $('#hchip');
+  if (h.level === 'error') {
+    bar.className = 'hbar error';
+    bar.innerHTML = `<span>⚠</span><div><b>Save vừa lưu đọc có vẻ sai.</b> ${esc(h.headline)}<br>
+      Dugout không ghi lần đọc này vào dữ liệu AI và giữ nguyên dữ liệu của lần đọc tốt gần nhất; bản save vẫn được cất trong thư mục sao lưu.
+      Thường do game hoặc database vừa cập nhật. Chi tiết ở mục AI dự đoán.</div>`;
+  } else if (files.length) {
+    bar.className = 'hbar info';
+    bar.innerHTML = `<span>ℹ</span><div>${files.map(f => `${esc(f.text)} <small>(${esc(f.when)})</small>`).join('<br>')}</div>
+      <button class="x" id="hbar-x" title="Ẩn thông báo này">×</button>`;
+    $('#hbar-x').onclick = () => {
+      files.forEach(f => S.dismissed.add(f.when + '|' + f.text.slice(0, 30)));
+      try { localStorage.setItem('dugout.dismissed', JSON.stringify([...S.dismissed].slice(-50))); } catch (e) {}
+      S.hSig = ''; renderHealth(s);
+    };
+  } else {
+    bar.className = 'hbar hidden';
+    bar.innerHTML = '';
+  }
+  chip.className = h.level === 'warn' ? 'hchip' : 'hchip hidden';
+  chip.textContent = `⚠ ${warns} cảnh báo dữ liệu`;
+}
+
+// the game next to Dugout: in Full Screen the game minimises whenever another window is clicked;
+// in Window Mode Dugout makes it a borderless window over its whole monitor, which does not
+function renderWindow(s) {
+  const w = s.remote ? null : s.window, chip = $('#winchip');
+  if (!chip) return;
+  const sig = JSON.stringify(w || null);
+  if (sig === S.winSig) return;
+  S.winSig = sig;
+  const hide = () => { chip.className = 'winchip hidden'; chip.innerHTML = ''; };
+  if (!w) return hide();
+  if (!w.game) return hide();
+  const mode = w.mode;
+  if (mode === 'borderless') {
+    chip.className = 'winchip on';
+    chip.innerHTML = `<span title="Game chạy Window Mode, Dugout bỏ viền cho phủ kín màn hình (borderless fullscreen). Bấm chuột, gõ phím trong Dugout ở màn hình kia không làm game thu nhỏ.">🎮 Game không viền · bấm Dugout không thu nhỏ game</span>
+      <button data-win="off" title="Trả lại khung cửa sổ bình thường cho game">✕</button>`;
+  } else if (w.setting === 'fullscreen' && w.held_failed) {
+    chip.className = 'winchip warn';
+    chip.innerHTML = `<span title="Game tự thu nhỏ lại mỗi lần Dugout cho nó hiện ra. Dugout thử lại khi bạn bấm vào game. Để game luôn hiện, dùng chế độ không viền.">⚠ Game Full Screen không chịu hiện khi bấm Dugout</span>
+      <button data-win="howto">Cách khác</button>`;
+  } else if (w.setting === 'fullscreen' && w.enabled && ['fullscreen', 'held', 'minimized'].includes(mode)) {
+    chip.className = 'winchip on';
+    chip.innerHTML = `<span title="Game để Full Screen. Khi bạn bấm sang Dugout, DirectX thu nhỏ game; Dugout cho game hiện lại ngay trên màn hình của nó (không lấy mất chuột, bàn phím của Dugout). Bấm vào game: game Full Screen trở lại. Bấm ứng dụng khác: game ẩn như bình thường.">🎮 Full Screen · bấm Dugout game vẫn hiện${mode === 'held' ? ' (đang giữ)' : ''}</span>
+      <button data-win="off" title="Tắt: game thu nhỏ khi bấm Dugout như mặc định của Full Screen">✕</button>`;
+  } else if (mode === 'fullscreen' || (mode === 'minimized' && w.setting === 'fullscreen')) {
+    chip.className = 'winchip warn';
+    chip.innerHTML = `<span title="Ở Full Screen, game tự thu nhỏ mỗi khi bấm chuột sang cửa sổ khác (kể cả Dugout).">⚠ Game Full Screen: bấm Dugout sẽ thu nhỏ game</span>
+      <button data-win="on">Giữ game hiện</button> <button data-win="howto">Cách khác</button>`;
+  } else if (mode === 'window' && !w.enabled) {
+    chip.className = 'winchip';
+    chip.innerHTML = '<button data-win="on" title="Bỏ viền cửa sổ game, phủ kín màn hình của nó">🎮 Làm game không viền</button>';
+  } else hide();
+}
+function winNote(text, ms) {
+  let n = $('#winnote');
+  if (!n) { n = document.createElement('div'); n.id = 'winnote'; n.className = 'winnote'; document.body.appendChild(n); }
+  n.innerHTML = text;
+  n.classList.add('show');
+  clearTimeout(S.winNoteT);
+  S.winNoteT = setTimeout(() => n.classList.remove('show'), ms || 6000);
+}
+function windowHowto() {
+  const w = (S.status || {}).window || {};
+  $('#modal').classList.remove('hidden');
+  $('#modal-body').innerHTML = `<h2>🎮 Game và Dugout trên hai màn hình</h2>
+    <div class="sub"><b>Cách 1 (mặc định): giữ Full Screen.</b> Ở Full Screen, DirectX của game tự thu nhỏ game khi bạn bấm sang cửa sổ khác. Dugout cho game hiện lại ngay trên màn hình của nó khi cửa sổ vừa được bấm là Dugout; bấm lại vào game thì game Full Screen trở lại (màn hình có thể chớp một chút). Nếu game cứ tự thu nhỏ lại, dùng cách 2.</div>
+    <h3 style="margin-top:14px">Cách 2: toàn màn hình không viền (borderless)</h3>
+    <div class="sub">Game chạy Window Mode, Dugout bỏ viền cửa sổ và cho phủ kín màn hình của nó: nhìn như Full Screen, không chớp khi chuyển qua lại.</div>
+    ${w.game ? '<div class="note bad">Hãy thoát FL26 trước (game chỉ đọc cài đặt lúc khởi động), rồi bấm nút dưới.</div>' : ''}
+    <div class="kv" style="margin-top:10px"><span><b>Chuyển FL26 sang không viền</b><br><small>Dugout đổi đúng một mục trong cài đặt của game (Screen Mode → Window Mode), giữ bản cũ bên cạnh. Độ phân giải giữ nguyên.</small></span>
+      <button class="primary" data-win="wmode">Chuyển</button></div>
+    <div class="kv"><span>Trả lại Full Screen như cũ</span><button data-win="fmode">Trả lại</button></div>
+    <div class="kv"><span>Hoặc tự chỉnh trong Settings.exe của FL26: Display → Screen Mode → Window Mode</span><button data-win="settings">Mở Settings</button></div>
+    <div class="note">Sau khi chuyển, mở game như thường: Dugout tự bỏ viền và phủ kín màn hình chính. Bấm chuột, gõ phím trong Dugout ở màn hình kia, game vẫn ở nguyên. Thanh trên cùng hiện "🎮 Game không viền".</div>`;
+}
+
+// ------------------------------------------------------------------ live match map
+// Dugout reads the players' and the ball's positions from the game during a match (matchlive.py) and
+// analyses them (liveai.py); this page draws the map (ours attacking to the right, our right side at
+// the bottom), the live remarks, tiredness and substitutions, and the pre-match analysis.
+const PITCH_SVG = `<svg class="lvpitch" viewBox="-56 -37.5 112 75" preserveAspectRatio="xMidYMid meet">
+  <rect x="-56" y="-37.5" width="112" height="75" class="grass"/>
+  ${[...Array(10)].map((_, i) => `<rect x="${-52.5 + i * 10.5}" y="-34" width="10.5" height="68" class="${i % 2 ? 'stripe' : 'stripe2'}"/>`).join('')}
+  <g class="lines">
+    <rect x="-52.5" y="-34" width="105" height="68"/>
+    <line x1="0" y1="-34" x2="0" y2="34"/><circle r="9.15"/><circle r="0.35" class="spot"/>
+    <rect x="-52.5" y="-20.16" width="16.5" height="40.32"/><rect x="36" y="-20.16" width="16.5" height="40.32"/>
+    <rect x="-52.5" y="-9.16" width="5.5" height="18.32"/><rect x="47" y="-9.16" width="5.5" height="18.32"/>
+    <circle cx="-41.5" r="0.35" class="spot"/><circle cx="41.5" r="0.35" class="spot"/>
+    <path d="M -36 -7.3 A 9.15 9.15 0 0 1 -36 7.3"/><path d="M 36 -7.3 A 9.15 9.15 0 0 0 36 7.3"/>
+    <rect x="-54.5" y="-3.66" width="2" height="7.32" class="goal"/><rect x="52.5" y="-3.66" width="2" height="7.32" class="goal"/>
+  </g>
+  <g id="lv-dots"></g>
+</svg>`;
+
+// the map is always drawn like the game's camera / radar (the manager's choice: no buttons to change it)
+function liveCamera() { return true; }
+function liveFlip() { return false; }
+
+function renderLive() {
+  const el = $('#page-live');
+  if (!el.querySelector('.lvpitch')) {
+    el.innerHTML = `<div class="live-grid">
+      <div class="lv-main">
+        <div class="card live-head" id="lv-head"></div>
+        <div class="card live-map"><div class="lvnotice" id="lv-notice"></div><div class="lvcarrier" id="lv-carrier"></div><div class="live-tools"><span class="sub" id="lv-note"></span>
+          <button class="ghost" id="lv-land" title="Bản đồ trên cả màn hình, xoay ngang">⛶ Xem ngang</button>
+</div>
+          <div class="lv-mini" id="lv-mini"></div><div class="lv-subs" id="lv-subs"></div><button class="lv-x" id="lv-x" title="Thoát xem ngang">✕</button>
+          ${PITCH_SVG}<div class="live-msg" id="lv-msg"></div></div>
+        <div class="card" id="lv-tl"></div>
+        <div class="card" id="lv-feed"></div>
+      </div>
+      <div class="lv-side"><div class="card" id="lv-subs"></div><div class="card" id="lv-stats"></div><div class="card" id="lv-pre"></div>
+        <div class="card" id="lv-me"></div><div class="card" id="lv-opp"></div></div>
+    </div>`;
+    S.liveDots = {};
+    S.liveSig = S.liveFeedSig = S.livePreSig = S.liveTlSig = null;
+  }
+  liveFullUpdate();
+  startLive();
+}
+
+function startLive() {
+  if (S.liveOn) return;
+  S.liveOn = true;
+  const loop = async () => {
+    if (S.page !== 'live') { S.liveOn = false; return; }
+    if (!document.hidden) {
+      try {
+        // the frames after the last one we have come along (trail): the dots move through every one of them;
+        // the analysis and the timeline (most of the bytes) about once a second only
+        const was = S.liveLast || {};
+        const full = was.state !== 'live' || !S.liveSlowAt || Date.now() - S.liveSlowAt > (S.lvFull ? 3000 : S.remote ? 1500 : 1000);
+        const q = [];
+        if (S.lvSince) q.push('since=' + S.lvSince);
+        if (!full) q.push('lite=1');
+        let d = await api('/api/matchlive' + (q.length ? '?' + q.join('&') : ''));
+        if (d.lite) d = Object.assign({}, S.liveSlow || {}, d);
+        else if (d.state === 'live') {
+          S.liveSlow = {ai: d.ai, timeline: d.timeline, tstats: d.tstats, shape: d.shape, identity: d.identity};
+          S.liveSlowAt = Date.now();
+        }
+        if ((d.key || 'idle') !== S.liveInfoKey) {          // a new match (or none): what does not change
+          S.liveInfoKey = d.key || 'idle';
+          try { S.liveInfo = await api('/api/matchlive/info'); } catch (e) { S.liveInfo = null; }
+          S.livePreSig = S.liveFeedSig = null;
+        }
+        S.liveLast = d;
+        drawLive(d);
+      } catch (e) { drawLive({state: 'error', message: 'Mất kết nối với Dugout.'}); }
+    }
+    setTimeout(loop, S.remote ? 150 : 110);
+  };
+  loop();
+}
+
+function liveClock(m) {
+  if (!m || m.minute == null) return '';
+  const base = `${m.minute}:${String(m.second || 0).padStart(2, '0')}`;
+  return base + (m.added ? ` <small>+${m.added}'</small>` : '');
+}
+const lvWho = id => { const p = ((S.liveInfo || {}).people || {})[id]; return p ? `${p.num != null ? `<span class="sn ${p.team}">${p.num}</span> ` : ''}${esc(p.name)}` : ''; };
+const lvWhoText = x => x && x.name ? `${x.num != null ? `<span class="sn opp">${x.num}</span> ` : ''}<b>${esc(x.name)}</b>` : '';
+
+function drawLive(d) {
+  if (!$('#lv-head')) return;
+  const m = d.match, info = S.liveInfo || {}, fx = info.fixture;
+  const sig = JSON.stringify([d.state, d.message, m && [m.home.id, m.away.id, m.score, m.pk, m.minute, m.second, m.period, m.paused], !!fx, d.last && d.last.saved]);
+  if (sig !== S.liveSig) {
+    S.liveSig = sig;
+    const where = fx ? `<div class="sub lv-fx">${esc(fx.comp_name || '')}${fx.date ? ' · ' + vnDate(fx.date) : ''}${fx.derby ? ' · TRẬN DERBY' : ''} · ${fx.venue === 'home' ? 'sân nhà' : 'sân khách'}${fx.opp_manager ? ` · HLV đối thủ ${esc(fx.opp_manager)}` : ''}</div>` : '';
+    $('#lv-head').innerHTML = m ? `<div class="live-score">
+        <div class="t ${m.home.me ? 'me' : ''}">${crest(m.home.id, m.home.name, 'md')}<b>${esc(m.home.name)}</b></div>
+        <div class="sc"><div class="n">${m.score[0] ?? '-'} – ${m.score[1] ?? '-'}</div>
+          ${m.pk && (m.pk[0] || m.pk[1]) ? `<div class="sub">luân lưu ${m.pk[0]}–${m.pk[1]}</div>` : ''}
+          <div class="clock">${liveClock(m)}</div><div class="sub">${esc(m.period_vi || '')}${m.paused ? ' · tạm dừng' : ''}</div></div>
+        <div class="t ${m.away.me ? 'me' : ''}"><b>${esc(m.away.name)}</b>${crest(m.away.id, m.away.name, 'md')}</div></div>${where}`
+      : `<div class="live-score empty"><b>◉ Trực tiếp</b><span class="sub">Vào trận trong game: trang này tự mở, bản đồ, nhận định AI, thể lực và gợi ý thay người hiện ngay khi trận bắt đầu.</span>
+          ${d.last ? `<span class="sub">Trận gần nhất có dữ liệu trực tiếp: <b>${esc(d.last.home_name || '')} ${(d.last.score || [])[0] ?? ''}–${(d.last.score || [])[1] ?? ''} ${esc(d.last.away_name || '')}</b> (nhận định bên dưới).</span>` : ''}</div>`;
+    const mini = $('#lv-mini');
+    if (mini) mini.innerHTML = m ? `${crest(m.home.id, m.home.name)}<b>${m.score[0] ?? '-'}–${m.score[1] ?? '-'}</b>${crest(m.away.id, m.away.name)}
+      <span class="clock">${liveClock(m)}</span>${m.paused ? '<small>tạm dừng</small>' : ''}` : '';
+    const msg = d.state === 'live' ? '' : d.message || '';
+    $('#lv-msg').innerHTML = msg ? `<div>${d.state === 'searching' || d.state === 'loading' ? '<span class="spin"></span>' : ''}${esc(msg)}</div>` : '';
+    $('#lv-msg').classList.toggle('show', !!msg);
+  }
+  drawDots(d);
+  if (S.lvFull) { drawLiveSubs(d); return; }  // the map alone on screen: the subs under the score, nothing else
+
+  drawTimeline(d);
+  drawFeed(d);
+  drawPre(d);
+  if (Date.now() - (S.liveStatsAt || 0) > 900) { S.liveStatsAt = Date.now(); drawSide(d); }
+}
+
+// Substitutions on the sideways map, under the score: the last three, "67' ▲ in ▼ out" (team colour dot)
+function drawLiveSubs(d) {
+  const el = $('#lv-subs');
+  if (!el) return;
+  const people = (S.liveInfo || {}).people || {};
+  const short = pid => { const n = (people[pid] || people[String(pid)] || {}).name || ''; const w = n.split(' '); return esc(w.length > 1 ? w.slice(1).join(' ') : n); };
+  const subs = (d.state === 'live' ? d.timeline || [] : []).filter(i => i.kind === 'sub' && i.inn).sort((a, b) => (a.t ?? 0) - (b.t ?? 0)).slice(-3);
+  const html = subs.map(i => `<div><span class="t ${i.team || ''}"></span><span class="m">${esc(i.min || '')}</span>
+    <span class="on">▲ ${short(i.inn)}</span><span class="off">▼ ${short(i.out)}</span></div>`).join('');
+  if (el.innerHTML !== html) el.innerHTML = html;
+}
+
+// The map alone on the whole screen, sideways: the button (full screen + the screen turned where the phone
+// lets a page do it; else the map is turned on the screen: hold the phone sideways), or the phone simply
+// turned sideways on the live page.
+const LAND_Q = matchMedia('(orientation: landscape) and (max-height: 540px)');
+const PORTRAIT_Q = matchMedia('(orientation: portrait)');
+function liveFullUpdate() {
+  const b = document.body;
+  const on = S.page === 'live' && (b.classList.contains('lv-land') || LAND_Q.matches);
+  b.classList.toggle('lv-rot', on && b.classList.contains('lv-land') && !S.lvLocked && PORTRAIT_Q.matches);
+  if (on === !!S.lvFull) return;
+  S.lvFull = on;
+  b.classList.toggle('lv-full', on);
+  if (!on) { S.liveSig = S.liveFeedSig = S.livePreSig = S.liveTlSig = null; S.liveStatsAt = 0; }   // drawn again
+}
+async function setLiveLand(on) {
+  const b = document.body;
+  b.classList.toggle('lv-land', on);
+  if (on) {
+    try { if (!document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({navigationUI: 'hide'}); } catch (e) {}
+    S.lvLocked = false;
+    try { await screen.orientation.lock('landscape'); S.lvLocked = true; } catch (e) {}
+    try { if (navigator.wakeLock) S.wake = await navigator.wakeLock.request('screen'); } catch (e) {}   // the screen stays on
+  } else {
+    S.lvLocked = false;
+    try { screen.orientation.unlock(); } catch (e) {}
+    try { if (document.fullscreenElement) await document.exitFullscreen(); } catch (e) {}
+    try { if (S.wake) { S.wake.release(); S.wake = null; } } catch (e) {}
+  }
+  liveFullUpdate();
+}
+LAND_Q.addEventListener('change', liveFullUpdate);
+PORTRAIT_Q.addEventListener('change', liveFullUpdate);
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && document.body.classList.contains('lv-land') && S.lvLocked) setLiveLand(false);
+});
+
+function drawDots(d) {
+  const info = S.liveInfo || {}, pre = info.prematch || {};
+  const marks = {};
+  for (const t of pre.threats || []) marks[t.id] = 'threat';
+  for (const w of pre.weak || []) for (const x of w.players || (w.id ? [w] : [])) marks[x.id] = 'weak';
+  const flip = liveFlip() ? -1 : 1;
+  const cam = liveCamera() && d.view ? d.view : [1, 1];     // like the game screen / radar, or ours attacking right
+  const vx = cam[0], vy = cam[1] * flip;
+  const dots = $('#lv-dots');
+  const seen = new Set();
+  const pos = {};
+  const players = d.state === 'live' ? d.players || [] : [];
+  for (const p of players) {
+    const key = 'p' + p.k;
+    seen.add(key);
+    let g = S.liveDots[key];
+    if (!g) {
+      g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.innerHTML = '<circle class="ring" r="2.5"/><circle class="body" r="1.7"/><text y="0.62"></text><title></title>';
+      dots.appendChild(g);
+      S.liveDots[key] = g;
+    }
+    const tired = p.st != null && p.st <= 55 ? ' tired' : '';
+    const has = d.carrier && d.carrier.k === p.k ? ' carrier' : '';
+    const st = (p.new ? ' new' : '') + (p.leaving ? ' leaving' : '') + (p.guess ? ' guess' : '');
+    g.setAttribute('class', 'pl ' + (p.team || 'unk') + (marks[p.id] ? ' ' + marks[p.id] : '') + tired + has + st);
+    g.dataset.k = p.k;
+    g.dataset.team = p.team || 'unk';
+    pos[key] = [vx * p.x, vy * p.y];
+    const t = g.querySelector('text');
+    const label = p.num != null ? String(p.num) : '';
+    if (t.textContent !== label) t.textContent = label;
+    g.querySelector('title').textContent = (p.name ? `${p.num != null ? p.num + ' · ' : ''}${p.name}${p.pos ? ' · ' + p.pos : ''}${p.sub_for ? ' · vào thay ' + p.sub_for : ''}${p.leaving ? ' · đang rời sân' : ''}${p.st != null ? ` · thể lực ${p.st}%` : ''}` : 'Cầu thủ')
+      + (p.new ? ' · vừa vào sân, Dugout đang xem anh ấy chạy về vị trí nào' : p.guess ? ' · tên đoán trước, chờ game báo' : '') + ' · chạm để sửa tên';
+  }
+  if (d.state === 'live' && d.ball) {
+    seen.add('ball');
+    let g = S.liveDots.ball;
+    if (!g) {
+      g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.innerHTML = '<ellipse class="shadow" rx="0.9" ry="0.5"/><circle r="0.85"/>';
+      dots.appendChild(g);
+      S.liveDots.ball = g;
+    }
+    const bs = d.bstate || {};
+    g.setAttribute('class', 'ball ' + (bs.state || '') + (bs.guess ? ' guess' : ''));   // dead / pending / guessed: dimmed
+    pos.ball = [vx * d.ball.x, vy * d.ball.y, d.ball.h];
+  }
+  for (const [k, g] of Object.entries(S.liveDots)) if (!seen.has(k)) { g.remove(); delete S.liveDots[k]; }
+  liveBuffer(d, pos);
+  $('#lv-note').innerHTML = d.state === 'live' ? (d.guessed ? 'Chưa đọc được tên cầu thủ'
+    : `Xanh: đội bạn (đang đá sang ${vx > 0 ? 'phải' : 'trái'}) · Đỏ: đối thủ · <span class="lg threat">◯</span> nguy hiểm · <span class="lg weak">◯</span> điểm yếu`)
+    + (d.ball ? '' : ' · đang tìm quả bóng…') : '';
+  const nb = $('#lv-notice');
+  if (nb) {
+    const html = d.state === 'live' && (d.notices || []).length ? d.notices.slice(-2).reverse().map(t => `<div>${esc(t)}</div>`).join('') : '';
+    if (nb.innerHTML !== html) nb.innerHTML = html;
+    nb.classList.toggle('show', !!html);
+  }
+  // who has the ball (the nearest player at its feet; none while it flies or rolls free); a dead ball: why
+  const c = d.state === 'live' ? d.carrier : null, bs = d.state === 'live' ? d.bstate || {} : {};
+  const owner = bs.owner ? (d.players || []).find(p => p.id === bs.owner) : null;
+  const cb = $('#lv-carrier');
+  if (cb) {
+    const html = bs.state === 'dead' && bs.why ? `<span class="why">⚽ ${esc(BALL_WHY[bs.why] || 'Bóng chết')}</span>`
+      : c && c.state === 'held' ? `<span class="sn ${c.team}">${c.num ?? ''}</span> <b>${esc(c.name || 'Cầu thủ')}</b> <span class="sub">đang cầm bóng</span>`
+      : bs.guess && owner ? `<span class="sn ${owner.team}">${owner.num ?? ''}</span> <b>${esc(owner.name || 'Cầu thủ')}</b> <span class="sub">đang giữ bóng</span>`
+      : c && c.state === 'air' ? '<span class="sub">⚽ Bóng đang bay</span>' : c ? '<span class="sub">⚽ Bóng tự do</span>'
+      : bs.state === 'search' ? '<span class="sub">⚽ Đang tìm lại quả bóng…</span>' : '';
+    if (cb.innerHTML !== html) cb.innerHTML = html;
+    cb.classList.toggle('show', !!html);
+  }
+}
+
+// Smooth map: frames are kept with the game time they were read at (server clock) and drawn a little
+// behind, moving between two frames on every screen refresh; a late frame (phone, internet) does not make
+// the dots or the ball jump.
+function liveBuffer(d, pos) {
+  if (d.state !== 'live' || !d.ts) { S.lvFrames = []; S.lvSince = null; return; }
+  const now = performance.now() / 1000;
+  const off = d.ts - now;                                   // server clock minus ours, the quickest arrival
+  S.lvOff = S.lvOff == null || off > S.lvOff ? off : S.lvOff - 0.001;
+  const fr = S.lvFrames || (S.lvFrames = []);
+  // how far behind the newest frame we had was just before this answer came: the map is drawn that much
+  // behind (most of the time), so it never runs out of frames and stops, then jumps
+  if (fr.length) {
+    const L = S.lvLags || (S.lvLags = []);
+    L.push(now + S.lvOff - fr[fr.length - 1].ts);
+    if (L.length > 40) L.shift();
+    const srt = L.slice().sort((x, y) => x - y);
+    S.lvTarget = Math.min(2.5, Math.max(S.remote ? 0.3 : 0.15, srt[Math.floor((srt.length - 1) * 0.9)] + 0.08));
+  }
+  // every frame read since the last request (20 a second), in the same view as `pos`
+  const cam = liveCamera() && d.view ? d.view : [1, 1], vx = cam[0], vy = cam[1] * (liveFlip() ? -1 : 1);
+  for (const [ts, pl, b] of d.trail || []) {
+    if (fr.length && fr[fr.length - 1].ts >= ts) continue;
+    const p = {};
+    for (const [k, x, y] of pl) p['p' + k] = [vx * x, vy * y];
+    if (b) p.ball = [vx * b[0], vy * b[1], b[2]];
+    fr.push({ts, pos: p});
+  }
+  if (!fr.length || fr[fr.length - 1].ts < d.ts) fr.push({ts: d.ts, pos});
+  S.lvSince = fr[fr.length - 1].ts;
+  while (fr.length > 2 && fr[1].ts < d.ts - Math.max(3, (S.lvDelay || 0) + 1)) fr.shift();
+  if (!S.lvAnim) { S.lvAnim = true; requestAnimationFrame(liveAnimate); }
+}
+function liveAnimate() {
+  const fr = S.lvFrames || [];
+  if (S.page !== 'live' || !fr.length) { S.lvAnim = false; return; }
+  // the delay eases to what the frames need; when they run out it grows at once (the dots slow down a little
+  // instead of stopping and jumping)
+  const nowS = performance.now() / 1000 + (S.lvOff || 0);
+  if (S.lvDelay == null) S.lvDelay = S.lvTarget || (S.remote ? 0.5 : 0.18);
+  if (nowS - S.lvDelay > fr[fr.length - 1].ts) S.lvDelay = Math.min(2.5, S.lvDelay + 0.02);
+  else S.lvDelay += ((S.lvTarget || S.lvDelay) - S.lvDelay) * 0.004;
+  const tr = nowS - S.lvDelay;
+  let a = fr[0], b = fr[fr.length - 1];
+  for (let i = 0; i < fr.length - 1; i++) if (fr[i].ts <= tr && fr[i + 1].ts > tr) { a = fr[i]; b = fr[i + 1]; break; }
+  if (tr >= b.ts) a = b;
+  const f = b.ts > a.ts ? Math.min(1, Math.max(0, (tr - a.ts) / (b.ts - a.ts))) : 1;
+  for (const [k, g] of Object.entries(S.liveDots || {})) {
+    const p0 = a.pos[k], p1 = b.pos[k] || p0;
+    const q = p0 || p1;
+    if (!q) continue;
+    const x = p0 && p1 ? p0[0] + (p1[0] - p0[0]) * f : q[0], y = p0 && p1 ? p0[1] + (p1[1] - p0[1]) * f : q[1];
+    g.style.transform = `translate(${x.toFixed(2)}px, ${y.toFixed(2)}px)`;
+    if (k === 'ball') {
+      const h = p0 && p1 ? p0[2] + (p1[2] - p0[2]) * f : q[2];
+      g.querySelector('circle').style.transform = `translate(0px, ${(-Math.min(6, h * 0.6)).toFixed(2)}px) scale(${(1 + Math.min(0.8, h * 0.06)).toFixed(3)})`;
+    }
+  }
+  requestAnimationFrame(liveAnimate);
+}
+
+// What happened in the match (timeline.py: goals, shots, cards, substitutions, positions changed, the
+// periods) and what the live analysis says about it (liveai.py), in one list by game minute.
+const BALL_WHY = {goal: 'Bàn thắng', kickoff: 'Giao bóng', throw: 'Ném biên', corner: 'Phạt góc', goalkick: 'Phát bóng',
+  foul: 'Phạm lỗi', pk: 'Phạt đền', sub: 'Thay người', timeup: 'Hết hiệp', stop: 'Bóng chết'};
+const TL_ICON = {goal: '⚽', shot: '🎯', sub: '🔁', period: '⏱', start: '▶', end: '🏁', card: '🟨', pen: '❗', pos: '🔀'};
+function drawTimeline(d) {
+  const el = $('#lv-tl');
+  if (!el) return;
+  let items = d.state === 'live' ? d.timeline || [] : [], st = d.state === 'live' ? d.tstats : null;
+  let feed = d.state === 'live' ? (d.ai || {}).feed || [] : [], title = 'Diễn biến trận & nhận định';
+  if (!d.match && S.liveInfo && S.liveInfo.last) {
+    const l = S.liveInfo.last;
+    items = (l.timeline || []).slice().reverse();
+    feed = l.feed || [];
+    st = l.tstats;
+    title = `Trận vừa đá: ${esc(l.home_name || '')} ${(l.score || [])[0] ?? ''}–${(l.score || [])[1] ?? ''} ${esc(l.away_name || '')}`;
+  }
+  // the analysis' own event lines repeat the timeline: only its remarks are kept
+  const rows = items.map(i => ({t: i.t, ord: 1, html: `<div class="tl ${i.kind} ${i.team || ''}${i.goal ? ' goal' : ''}${i.card === 'red' ? ' red' : ''}"><b class="min">${esc(i.min || '')}</b>
+      <span class="ic">${i.kind === 'card' && i.card === 'red' ? '🟥' : TL_ICON[i.kind] || '•'}</span><span>${esc(i.text)}</span></div>`}))
+    .concat(feed.filter(f => f.cat !== 'event').map(f => ({t: f.t, ord: 0, html: `<div class="tl ai ${f.level || ''}"><b class="min">${esc(f.min || '')}</b>
+      <span class="ic">${FEED_ICON[f.cat] || '•'}</span><span>${esc(f.text)}${f.tip ? `<div class="tip">→ ${esc(f.tip)}</div>` : ''}</span></div>`})));
+  rows.sort((x, y) => ((y.t ?? -1) - (x.t ?? -1)) || (y.ord - x.ord));
+  const sig = JSON.stringify([title, rows.length, rows[0] && rows[0].html, st]);
+  if (sig === S.liveTlSig) return;
+  S.liveTlSig = sig;
+  if (!rows.length && !st) {
+    el.innerHTML = d.state === 'live' ? `<h3>${title}</h3><div class="sub">AI cần khoảng 1–2 phút thi đấu (theo đồng hồ trận) để có nhận định đầu tiên.</div>` : '';
+    return;
+  }
+  const row = (a, b, label) => `<div class="tlst"><b>${a}</b><span>${label}</span><b>${b}</b></div>`;
+  const shots = x => `${x.shots}${x.shots ? ` <small>(${x.on_target} trúng)</small>` : ''}`;
+  const stats = st ? `<div class="tlstats"><div class="tlst head"><b>Bạn</b><span></span><b>Đối thủ</b></div>
+      ${row(st.me.passes, st.opp.passes, 'Chuyền tới đồng đội')}${row(shots(st.me), shots(st.opp), 'Sút')}${row(st.me.won, st.opp.won, 'Cướp được bóng')}</div>` : '';
+  el.innerHTML = `<h3>${title} <span class="more sub">sự kiện từ game · nhận định AI</span></h3>${stats}
+    <div class="tlitems">${rows.map(r => r.html).join('')}</div>`;
+}
+
+// A tap on a dot: who is it? (a newcomer the game has not named yet, or a name the map got wrong)
+function liveWhoIs(k, team) {
+  const info = S.liveInfo || {}, people = info.people || {};
+  const d = S.liveLast || {};
+  const on = new Set((d.players || []).filter(p => p.id).map(p => p.id));
+  const dot = (d.players || []).find(p => p.k === k) || {};
+  const ids = Object.keys(people).filter(i => team === 'unk' || people[i].team === team)
+    .sort((a, b) => (on.has(+b) - on.has(+a)) || ((people[a].role === 'GK') - (people[b].role === 'GK')) || String(people[a].name).localeCompare(people[b].name));
+  $('#modal').classList.remove('hidden');
+  $('#modal-body').innerHTML = `<h2>Chấm này là ai?</h2>
+    <div class="sub">Hiện tại: <b>${esc(dot.name || 'chưa biết')}</b>${dot.sub_for ? ` (vào thay ${esc(dot.sub_for)})` : ''}. Chọn đúng cầu thủ: Dugout đổi tên chấm này (và người đang mang tên đó nếu cần), nhớ cho cả trận.</div>
+    <div class="whois">${ids.map(i => `<button data-whois="${i}" data-k="${k}"><span class="sn ${people[i].team}">${people[i].num ?? ''}</span> ${esc(people[i].name)} <small>${esc(people[i].role || '')}${on.has(+i) ? ' · đang trên sân' : ''}</small></button>`).join('')}</div>`;
+}
+
+const FEED_ICON = {defence: '🛡', attack: '⚔', shape: '▦', fitness: '🔋', event: '•', context: '⏱'};
+function feedRows(feed) {
+  return feed.map(f => `<div class="lvfeed ${f.level}"><span class="ic">${FEED_ICON[f.cat] || '•'}</span>
+    <div><div><b class="min">${esc(f.min || '')}</b> ${esc(f.text)}</div>${f.tip ? `<div class="tip">→ ${esc(f.tip)}</div>` : ''}</div></div>`).join('');
+}
+function drawFeed(d) {
+  if ($('#lv-tl')) { if ($('#lv-feed').innerHTML) $('#lv-feed').innerHTML = ''; $('#lv-feed').style.display = 'none'; return; }
+  let feed = (d.ai || {}).feed, title = 'Nhận định trực tiếp (AI)', note = '';
+  if (!d.match && S.liveInfo && S.liveInfo.last) {
+    const l = S.liveInfo.last;
+    feed = l.feed || [];
+    title = `Trận vừa đá: ${esc(l.home_name || '')} ${(l.score || [])[0] ?? ''}–${(l.score || [])[1] ?? ''} ${esc(l.away_name || '')}`;
+    note = `<div class="sub">Lưu lúc ${esc(l.saved || '')} trong thư mục của save (live\\).</div>`;
+  }
+  const sig = JSON.stringify([title, (feed || []).length, (feed || [])[0]]);
+  if (sig === S.liveFeedSig) return;
+  S.liveFeedSig = sig;
+  if (!feed) { $('#lv-feed').innerHTML = ''; return; }
+  $('#lv-feed').innerHTML = `<h3>${title}</h3>${note}${feed.length ? `<div class="lvfeeds">${feedRows(feed)}</div>`
+    : '<div class="sub">AI cần khoảng 1–2 phút thi đấu (theo đồng hồ trận) để có nhận định đầu tiên: sơ đồ thật của hai đội, cánh đang bị khai thác, ai bị cô lập, ai đuối sức…</div>'}`;
+}
+
+function drawPre(d) {
+  const info = S.liveInfo || {}, pre = info.prematch;
+  const sig = JSON.stringify([info.key, !!pre]);
+  if (sig === S.livePreSig) return;
+  S.livePreSig = sig;
+  if (!pre || !Object.keys(pre).length) {
+    $('#lv-pre').innerHTML = d.match ? '<h3>Trước trận</h3><div class="sub">Trận này không có trong lịch Dugout đã phân tích (giao hữu, cúp mới bốc thăm…).</div>' : '';
+    return;
+  }
+  const p = pre.pred;
+  const predTxt = p ? `<div class="kv"><span>AI dự đoán</span><b>Thắng ${p.w}% · Hòa ${p.d}% · Thua ${p.l}%</b></div>
+    <div class="kv"><span>Bàn thắng kỳ vọng</span><b>${p.xg ? p.xg[0] + ' – ' + p.xg[1] : ''}${p.scores && p.scores[0] ? ` · hay gặp ${p.scores[0].s[0]}–${p.scores[0].s[1]} (${p.scores[0].p}%)` : ''}</b></div>` : '';
+  const weak = (pre.weak || []).map(w => `<li>${(w.players || (w.name ? [w] : [])).map(lvWhoText).join(', ')}${(w.players || []).length || w.name ? ': ' : ''}${esc(w.text)}</li>`).join('');
+  const threats = (pre.threats || []).map(t => `<li>${lvWhoText(t)} <small>${esc(t.role || '')}</small> — ${esc((t.why || []).join(', '))}</li>`).join('');
+  const mus = (pre.matchups || []).map(mu => `<li><b>${esc(mu.label)}</b> <span class="lvl ${mu.level || ''}">${esc(mu.level || '')}</span>: ${lvWhoText(mu.att)} đấu
+      ${mu.def && mu.def.name ? `<span class="sn me">${mu.def.num ?? ''}</span> <b>${esc(mu.def.name)}</b>` : ''}${mu.tip ? `<div class="tip">→ ${esc(mu.tip)}</div>` : ''}</li>`).join('');
+  const tac = (pre.tactics || []).map(t => `<li><b>${esc(t.label)}</b>: ${esc(t.now || '')} → <b>${esc(t.rec || '')}</b><div class="tip">${esc(t.why || '')}</div></li>`).join('');
+  $('#lv-pre').innerHTML = `<h3>Trước trận (AI dự đoán)</h3>${predTxt}
+    ${weak ? `<h4>Điểm yếu của đối thủ</h4><ul class="lvul">${weak}</ul>` : ''}
+    ${threats ? `<h4>Cầu thủ nguy hiểm của họ</h4><ul class="lvul">${threats}</ul>` : ''}
+    ${mus ? `<h4>Đối đầu từng cánh</h4><ul class="lvul">${mus}</ul>` : ''}
+    ${tac ? `<h4>Chiến thuật nên đổi</h4><ul class="lvul">${tac}</ul>` : ''}
+    ${pre.opp_shape ? `<div class="sub">Sơ đồ dự kiến của đối thủ: ${esc(pre.opp_shape)}</div>` : ''}`;
+}
+
+function drawSide(d) {
+  const info = S.liveInfo || {}, people = info.people || {};
+  const ai = d.ai || {}, w = ai.window || {};
+  if (d.state !== 'live') {
+    for (const id of ['#lv-subs', '#lv-stats', '#lv-me', '#lv-opp']) $(id).innerHTML = '';
+    if (!d.match && info.last && info.last.players) drawLists(Object.values(info.last.players).map(p => ({...p, st: p.stamina})), 'Trận vừa đá · ');
+    return;
+  }
+  const players = d.players || [];
+  // tiredness and substitutions
+  const src = ai.stamina_source === 'game' ? 'đọc từ game' : 'ước tính theo quãng chạy và chỉ số Thể lực';
+  const subs = (ai.subs_now || []).map(s => `<div class="lvsub"><span>${lvWho(s.out)} <small>${s.stamina}%</small></span><span class="arr">→</span>
+      <span>${s.in ? lvWho(s.in) + ` <small>${esc((people[s.in] || {}).role || '')}${(people[s.in] || {}).ovr ? ' · OVR ' + people[s.in].ovr : ''}${(people[s.in] || {}).arrow ? ' · phong độ ' + people[s.in].arrow : ''}</small>` : '<small>không có người cùng vị trí trên băng ghế</small>'}</span></div>`).join('');
+  const done = (ai.subs || []).filter(s => s.team === 'me').map(s => `<div class="sub">Đã thay: ${lvWho(s.in)} vào, ${lvWho(s.out)} ra</div>`).join('');
+  $('#lv-subs').innerHTML = `<h3>Thể lực &amp; thay người <span class="more sub">${src}</span></h3>
+    ${subs || '<div class="sub">Chưa ai đuối sức (dưới 65%).</div>'}${done}`;
+  // the match in numbers
+  const shapeRow = (x, who, planned) => x ? `<div class="kv"><span>${who}</span><b>${esc(x.shape)}${planned && planned !== x.shape ? ` <small>(dự kiến ${esc(planned)})</small>` : ''} · khối ${esc(x.block)} · hàng thủ cách khung thành ${x.line} m${x.gap != null ? ` · giữa hai tuyến ${x.gap} m` : ''}</b></div>` : '';
+  const pos = w.possession != null ? [w.possession, 100 - w.possession] : d.possession;
+  $('#lv-stats').innerHTML = `<h3>Trong trận <span class="more sub">5 phút gần nhất</span></h3>
+    ${pos ? `<div class="kv"><span>Kiểm soát bóng</span><b>${pos[0]}% – ${pos[1]}%</b></div><div class="possbar"><i style="width:${pos[0]}%"></i></div>` : '<div class="sub">Kiểm soát bóng: cần thấy bóng một lúc.</div>'}
+    ${w.territory != null ? `<div class="kv"><span>Bóng ở phần sân đối thủ</span><b>${w.territory}%</b></div>` : ''}
+    ${shapeRow(w.me, 'Đội bạn (khi mất bóng)')}${shapeRow(w.opp, 'Đối thủ (khi mất bóng)', ((info.prematch || {}).opp_shape))}
+    ${!w.me && !w.opp ? '<div class="sub">Sơ đồ thật của hai đội: sau khoảng 1 phút thi đấu.</div>' : ''}`;
+  drawLists(players, '');
+}
+
+function drawLists(players, prefix) {
+  const list = (team, title) => {
+    const ps = players.filter(p => p.team === team).sort((a, b) => (a.st ?? 101) - (b.st ?? 101) || b.dist - a.dist);
+    if (!ps.length) return '';
+    return `<h3>${prefix}${title} <span class="more sub">thể lực · quãng chạy</span></h3><div class="lvlist">${ps.map(p => `
+      <div class="lvrow"><span class="sn ${team}">${p.num ?? ''}</span><span class="nm">${p.id ? `<span class="lnk" data-pid="${p.id}">${esc(p.name || '')}</span>` : esc(p.name || 'Cầu thủ')}</span>
+        <small>${esc(p.pos || p.role || '')}</small>
+        <span class="stbar ${p.st != null && p.st <= 55 ? 'low' : p.st != null && p.st <= 70 ? 'mid' : ''}" title="${p.st != null ? 'Thể lực ' + p.st + '%' : ''}"><i style="width:${p.st ?? 0}%"></i></span>
+        <b>${((p.dist || 0) / 1000).toFixed(2).replace('.', ',')} km</b></div>`).join('')}</div>`;
+  };
+  $('#lv-me').innerHTML = list('me', 'Đội bạn');
+  $('#lv-opp').innerHTML = list('opp', 'Đối thủ');
+}
+
+// ------------------------------------------------------------------ phone
+async function openPhone() {
+  $('#modal').classList.remove('hidden');
+  $('#modal-body').innerHTML = '<div class="empty">Đang kiểm tra mạng…</div>';
+  try { const d = await api('/api/phone'); renderPhone(d); phoneWait(d); } catch (e) { $('#modal-body').innerHTML = '<div class="empty">Không đọc được cài đặt.</div>'; }
+}
+function phoneWait(d) {
+  clearTimeout(S.phoneT);
+  if (d && d.on && !(d.tunnel || {}).url && !(d.tunnel || {}).error && !$('#modal').classList.contains('hidden'))
+    S.phoneT = setTimeout(async () => { try { const x = await api('/api/phone'); if (!$('#modal').classList.contains('hidden')) { renderPhone(x); phoneWait(x); } } catch (e) {} }, 2000);
+}
+async function phoneAction(body) {
+  $('#modal-body').insertAdjacentHTML('afterbegin', '<div class="sub" id="ph-wait">Đang xử lý…</div>');
+  const r = await post('/api/phone', body);
+  const d = await r.json().catch(() => ({}));
+  renderPhone(d);
+  phoneWait(d);
+  if (d.error) $('#modal-body').insertAdjacentHTML('afterbegin', `<div class="note bad">${esc(d.error)}</div>`);
+}
+function renderPhone(d) {
+  const t = d.tunnel || {};
+  const lanRows = (d.lan_urls || []).map(u => `<div class="kv"><span>${u.kind === 'lan' ? 'Wi-Fi nhà' : 'Tailscale'}</span><code>${esc(u.url)}</code></div>`).join('');
+  const fw = d.firewall === true ? '<span class="up">đã mở</span>' : d.firewall === false ? '<span class="down">chưa mở</span>' : '?';
+  const qr = d.on && d.qr ? d.qr + '<div class="sub">Quét bằng camera điện thoại</div>'
+    : d.on && !t.url ? `<div class="sub">${t.error ? esc(t.error) : 'Đang tạo đường kết nối qua Cloudflare… (khoảng 5–20 giây)'}</div>`
+    : '<div class="sub">Bấm Bật để hiện mã QR.</div>';
+  $('#modal-body').innerHTML = `<h2>📱 Dugout trên điện thoại</h2>
+    <div class="sub">Máy tính là app chính (đọc save và game). Điện thoại là app phụ: cài như một app, <b>mở lúc nào cũng được, kể cả khi máy tính tắt</b> (xem dữ liệu lần đồng bộ gần nhất); khi Dugout trên máy tính đang chạy thì tự đồng bộ, dù điện thoại dùng Wi-Fi hay 4G.</div>
+    <div class="phone-grid">
+      <div>
+        <div class="kv"><span><b>Kết nối điện thoại</b><br><small>Qua đường mã hóa của Cloudflare: không cần mở cổng, không cần cùng Wi-Fi, không cần tài khoản</small></span>
+          <button class="${d.on ? '' : 'primary'}" data-ph="${d.on ? 'off' : 'on'}">${d.on ? 'Tắt' : 'Bật'}</button></div>
+        ${t.cloudflared === false ? '<div class="note bad">Máy chưa có cloudflared. Cài bằng lệnh <code>winget install Cloudflare.cloudflared</code> rồi mở lại Dugout.</div>' : ''}
+        <div class="kv"><span><b>Chạy nền khi bật máy</b><br><small>Dugout tự chạy (không cửa sổ) khi bật Windows: điện thoại đồng bộ được cả khi bạn chưa mở Dugout</small></span>
+          <button data-ph="${d.startup ? 'nostart' : 'start'}">${d.startup ? 'Tắt' : 'Bật'}</button></div>
+        ${d.on && t.url ? `<div class="kv"><span>Địa chỉ hiện tại</span><code>${esc(t.url)}</code></div>` : ''}
+        <details style="margin-top:10px"><summary class="sub">Cách phụ: chỉ trong Wi-Fi nhà (cần mở tường lửa)</summary>
+          <div class="kv"><span><b>Cho Wi-Fi nhà kết nối thẳng</b><br><small>Windows đang để mạng Wi-Fi ở chế độ Public nên cần mở cổng ${d.port} (hỏi quyền quản trị)</small></span>
+            <button data-ph="${d.lan ? 'nolan' : 'lan'}">${d.lan ? 'Tắt' : 'Bật'}</button></div>
+          ${d.lan ? `<div class="kv"><span><b>Tường lửa Windows</b> ${fw}</span>${d.firewall === true ? '' : '<button data-ph="fw">Mở cổng</button>'}</div>${lanRows}
+            ${d.lan_qr ? `<div class="qr" style="max-width:200px;margin-top:8px">${d.lan_qr}<div class="sub">Mã QR cho Wi-Fi nhà</div></div>` : ''}` : ''}
+        </details>
+      </div>
+      <div class="qr">${qr}</div>
+    </div>
+    <h3 style="margin-top:16px">Cách dùng</h3>
+    <ol class="steps">
+      <li>Bấm <b>Bật</b>, chờ mã QR hiện ra. Quét bằng camera điện thoại: Dugout mở ra, đã ghép sẵn.</li>
+      <li>Cài thành app: Android (Chrome) ⋮ → <b>Thêm vào màn hình chính</b> / <b>Cài đặt ứng dụng</b>; iPhone (Safari) nút Chia sẻ → <b>Thêm vào MH chính</b>. Từ đó mở bằng biểu tượng Dugout.</li>
+      <li>Máy tính tắt: app vẫn mở, xem dữ liệu lần đồng bộ gần nhất (thanh trên cùng ghi "Máy tính chưa kết nối"). Bật máy, mở Dugout (hoặc bật <b>Chạy nền khi bật máy</b>): app tự đồng bộ lại, không cần quét lại.</li>
+    </ol>
+    <div class="note">Chỉ điện thoại đã quét mã mới vào được. Đường Cloudflare đổi địa chỉ mỗi lần Dugout khởi động; app trên điện thoại tự tìm địa chỉ mới qua một kênh riêng của mã ghép (ntfy.sh). Nếu có lúc app không tự nối lại, mở bảng này và quét lại mã.</div>`;
+}
+
+// how old the data is: the game only writes the save when it saves (or autosaves)
+function renderSaveAge(s) {
+  const sv = s.save || {}, chip = $('#savechip');
+  if (!chip || sv.age == null) return;
+  const mins = Math.floor(sv.age / 60);
+  const ago = mins < 1 ? 'vừa xong' : mins < 60 ? `${mins} phút trước` : `${Math.floor(mins / 60)} giờ ${mins % 60} phút trước`;
+  const stale = sv.game_on && mins >= 15;
+  chip.className = 'savechip' + (stale ? ' stale' : '');
+  chip.textContent = `💾 Save lưu ${ago}` + (stale ? ' · bật Tự động lưu trong Master League' : '');
+  chip.title = stale ? 'Game đang mở nhưng save chưa được ghi lại. Dugout chỉ cập nhật khi game ghi save: hãy bật Tự động lưu của Master League (game sẽ tự lưu sau mỗi trận) hoặc lưu tay sau trận.'
+    : 'Lần cuối game ghi file save. Dugout đọc lại ngay mỗi khi game ghi save.';
+}
+
+function chrome() {
+  const b = S.bundle;
+  $('#today').innerHTML = `${esc(b.date_vi)} <small>· ${esc(b.club.name)}<span class="pc-only"> · save ${esc(b.save_name)}</span></small>`;
+  const st = b.home.standing;
+  $('#club').innerHTML = `${crest(b.club.id, b.club.name, 'md')}<div><b>${esc(b.club.name)}</b>
+    <small>${st ? `Hạng ${st.pos}/${st.of} · ${esc(st.comp)}` : ''}</small></div>`;
+  const unread = b.inbox.filter(e => !e.read).length;
+  $('#nb-inbox').textContent = unread || '';
+  $('#nb-squad').textContent = b.home.advice_total || '';
+  $('#nb-squad').title = 'Số cầu thủ có gợi ý phát triển';
+  const mf = b.matchday && b.matchday.fixtures && b.matchday.fixtures[0];
+  const nChanges = mf && mf.tactics ? b.matchday.changes.filter(c => c.type === 'swap').length + mf.tactics.changes : 0;
+  $('#nb-match').textContent = nChanges || '';
+  $('#nb-match').title = 'Số thay đổi AI đề xuất cho trận tới (đội hình + chiến thuật)';
+  $('#side-foot').innerHTML = `Dữ liệu: ${b.ai.snapshots} lần lưu được ghi lại${b.ai.first_snapshot ? ` từ ${vnDate(b.ai.first_snapshot)}` : ''}<br>Đọc save: ${b.ai.decode_seconds}s`;
+}
+
+function show(page) {
+  S.page = page;
+  if (page === 'live') S.dirty.live = true;
+  if (page !== 'live' && document.body.classList.contains('lv-land')) setLiveLand(false);
+  setTimeout(liveFullUpdate, 0);
+  try { history.replaceState(null, '', '#' + page); } catch (e) {}
+  document.querySelectorAll('#nav button').forEach(x => x.classList.toggle('active', x.dataset.page === page));
+  document.querySelectorAll('.page').forEach(x => x.classList.toggle('active', x.id === 'page-' + page));
+  render(page);
+}
+function render(page) {
+  if (!S.bundle || !S.dirty[page]) return;
+  S.dirty[page] = false;
+  const el = $('#page-' + page), BARS = '.tabs, .msec, .seg';
+  const left = el ? [...el.querySelectorAll(BARS)].map(b => b.scrollLeft) : [];
+  ({home: renderHome, inbox: renderInbox, match: renderMatch, live: renderLive, fixtures: renderFixtures, squad: renderSquad,
+    market: renderMarket, youth: renderYouth, ai: renderAi})[page]();
+  if (el) el.querySelectorAll(BARS).forEach((b, i) => { if (left[i]) b.scrollLeft = left[i]; });
+}
+
+// ------------------------------------------------------------------ home
+function renderHome() {
+  const b = S.bundle, h = b.home, me = b.club.id;
+  const nx = h.next, last = h.last;
+  const mfx = nx && b.matchday ? (b.matchday.fixtures || []).find(f => f.key === nx.key) : null;
+  const nextPred = mfx && mfx.pred ? `<div style="margin-top:12px">${predBar(mfx.pred, mfx.venue)}
+    <div class="sub" style="margin-top:6px">AI dự đoán với đội hình đề xuất${mfx.opp_manager ? ` · HLV đối thủ ${esc(mfx.opp_manager)} (${esc(mfx.opp_shape)})` : ''}</div></div>` : '';
+  const nextCard = nx ? `<div class="card"><h3>Trận tiếp theo <span class="more" data-go="match">Phân tích đối thủ →</span></h3>
+    <div class="match-hero">
+      <div class="team">${crest(nx.home, nx.home_name, 'lg')}${esc(nx.home_name)}</div>
+      <div><div class="vs">VS</div><div class="sub">${nx.hour != null ? nx.hour + ':00' : ''}</div></div>
+      <div class="team">${crest(nx.away, nx.away_name, 'lg')}${esc(nx.away_name)}</div></div>
+    <div class="pillrow" style="justify-content:center;margin-top:10px">
+      <span class="pill">${esc(nx.comp_name)} · ${esc(nx.round)}</span><span class="pill">${esc(nx.date_vi)}</span>
+      <span class="pill" style="color:var(--accent)">${nx.days <= 0 ? 'Hôm nay' : nx.days === 1 ? 'Ngày mai' : `còn ${nx.days} ngày`}</span></div>${nextPred}</div>`
+    : '<div class="card"><h3>Trận tiếp theo</h3><div class="empty">Chưa có lịch.</div></div>';
+  const lastCard = last ? `<div class="card click-match" data-match="${esc(last.key)}"><h3>Trận gần nhất ${res(last.outcome)}</h3>
+    <div class="match-hero">
+      <div class="team">${crest(last.home, last.home_name, 'md')}${esc(last.home_name)}</div>
+      <div class="score">${last.hg}–${last.ag}</div>
+      <div class="team">${crest(last.away, last.away_name, 'md')}${esc(last.away_name)}</div></div>
+    <div class="sub" style="text-align:center;margin:6px 0">${esc(last.comp_name)} · ${esc(last.round)} · ${vnDate(last.date)}</div>
+    ${scorersBlock(last)}</div>` : '<div class="card"><h3>Trận gần nhất</h3><div class="empty">Chưa đá trận nào.</div></div>';
+  const st = h.standing;
+  const comp = b.comps.find(c => c.table && c.table.length);
+  let mini = '';
+  if (comp) {
+    const idx = comp.table.findIndex(t => t.team === me);
+    const from = Math.max(0, Math.min(idx - 2, comp.table.length - 5));
+    mini = `<table><tbody>${comp.table.slice(from, from + 5).map(t => `<tr class="${t.team === me ? 'me' : ''}">
+      <td class="num">${t.pos}</td><td>${crest(t.team, t.name)} ${esc(t.name)}</td><td class="num">${t.p}</td>
+      <td class="num">${t.gf - t.ga > 0 ? '+' : ''}${t.gf - t.ga}</td><td class="num"><b>${t.pts}</b></td></tr>`).join('')}</tbody></table>`;
+  }
+  const rec = h.record;
+  const tableCard = `<div class="card"><h3>${st ? esc(st.comp) : 'Bảng xếp hạng'} <span class="more" data-go="fixtures" data-fixtab="table">Xem bảng →</span></h3>
+    ${st ? `<div style="display:flex;gap:18px;align-items:baseline;margin-bottom:8px"><div class="stat">${st.pos}<small>/${st.of}</small></div>
+      <div class="sub">${st.pts} điểm · ${st.p} trận</div><div class="pillrow" style="margin-left:auto">${[...(h.form || '')].map(res).join('')}</div></div>` : ''}
+    ${mini}<div class="sub" style="margin-top:8px">Mùa này: ${rec.w} thắng · ${rec.d} hòa · ${rec.l} thua · ghi ${rec.gf} · thủng ${rec.ga}</div></div>`;
+  const list = (rows, val, unit) => rows.length ? rows.map(r => `<div class="kv" data-pid="${r.id}" style="cursor:pointer">
+    <span>${face(r.id)} ${esc(r.name)}</span><b>${val(r)}${unit}</b></div>`).join('') : '<div class="empty">Chưa có dữ liệu.</div>';
+  const perf = `<div class="card"><h3>Ghi bàn</h3>${list(h.top_goals, r => r.goals, '')}</div>
+    <div class="card"><h3>Kiến tạo</h3>${list(h.top_assists, r => r.assists, '')}</div>
+    <div class="card"><h3>Điểm trung bình <span class="sub">thang 10</span></h3>${list(h.top_rating, r => (r.rating10 ?? r.rating).toFixed(2), '')}</div>`;
+  const adv = `<div class="card span2"><h3>💡 Gợi ý phát triển <span class="sub">${h.advice_total} cầu thủ</span><span class="more" data-go="squad" data-squadfilter="advice">Xem trong Đội hình →</span></h3>
+    ${h.advice.length ? `<div class="grid g2">${h.advice.slice(0, 8).map(r => `<div class="kv" data-pid="${r.id}" data-tab="dev" style="cursor:pointer">
+      <span>${face(r.id)} ${esc(r.name)} <small>${r.pos}</small></span>
+      <span class="pillrow">${(r.advice_kinds || []).map(k => `<span class="pill">${{style: 'Phong cách', skill: 'Kỹ năng', position: 'Vị trí'}[k]}</span>`).join('')}</span></div>`).join('')}</div>`
+      : '<div class="empty">Không có gợi ý mới.</div>'}</div>`;
+  const grow = `<div class="card"><h3>🤖 So với dự đoán của AI</h3>
+    ${h.growers.length ? h.growers.map(r => `<div class="kv" data-pid="${r.id}" style="cursor:pointer"><span>${face(r.id)} ${esc(r.name)} <small>${r.age}t</small></span>
+      <b class="${r.pace >= 0 ? 'up' : 'down'}">${r.pace > 0 ? '+' : ''}${r.pace}</b></div>`).join('') : '<div class="empty">AI cần thêm vài lần lưu game.</div>'}
+    <div class="sub" style="margin-top:6px">OVR thực tế so với dự đoán ban đầu, đã trừ mức chung của cầu thủ cùng tuổi.</div></div>`;
+  const lowForm = ((b.matchday || {}).form || []).filter(r => r.plan === 'start' && r.cond >= 0 && r.cond <= 1);
+  const alerts = `<div class="card"><h3>Cần chú ý</h3>
+    ${lowForm.map(r => `<div class="kv" data-pid="${r.id}" style="cursor:pointer"><span>${arrow(r.cond)} ${esc(r.name)}</span><small>phong độ ${r.arrow} nhưng đang đá chính</small></div>`).join('')}
+    ${h.injured.map(r => `<div class="kv" data-pid="${r.id}" style="cursor:pointer"><span>🩹 ${esc(r.name)}</span><small>${r.inj} ngày</small></div>`).join('')}
+    ${h.expiring.map(r => `<div class="kv" data-pid="${r.id}" style="cursor:pointer"><span>📝 ${esc(r.name)}</span><small>hết hạn ${r.contract[2]}/${r.contract[1]}/${r.contract[0]}</small></div>`).join('')}
+    ${!lowForm.length && !h.injured.length && !h.expiring.length ? '<div class="empty">Không có gì cần xử lý.</div>' : ''}</div>`;
+  const inbox = `<div class="card span2"><h3>Hộp thư mới nhất <span class="more" data-go="inbox">Mở hộp thư →</span></h3>
+    ${b.inbox.slice(0, 6).map(e => msgRow(e)).join('') || '<div class="empty">Chưa có tin.</div>'}</div>`;
+  $('#page-home').innerHTML = `<div class="grid g3">${nextCard}${lastCard}${tableCard}${perf}${adv}${grow}${inbox}${alerts}</div>`;
+}
+// who scored, under each side (two columns on the phone too: the home side's on the left, as in the score);
+// own goals under the side they count for (the save has no own goals: named from Dugout's live log)
+const ogLine = o => `<span class="goal">⚽</span> ${o.name ? esc(o.name) : 'Phản lưới nhà'}${o.name ? ' <small class="og">(phản lưới nhà)</small>' : ''}`;
+function scorersBlock(m) {
+  const og = m.og || {};
+  const g = (arr, own) => (arr || []).filter(p => p.g).map(p => `<span class="goal">⚽</span> ${esc(p.name)}${p.g > 1 ? ` (${p.g})` : ''}`)
+    .concat((own || []).map(ogLine)).join('<br>');
+  const hs = g(m.home_players, og.home), as = g(m.away_players, og.away);
+  if (!hs && !as) return '';
+  return `<div class="scorers"><div class="h">${hs}</div><div class="a">${as}</div></div>`;
+}
+
+// ------------------------------------------------------------------ inbox
+function msgRow(e) {
+  const [ic] = KIND[e.kind] || ['•'];
+  const who = persona(e.from, e);
+  return `<div class="msg ${e.read ? '' : 'unread'} ${S.inboxSel === e.id ? 'sel' : ''}" data-msg="${esc(e.id)}">
+    <div class="ic ${e.kind} ${e.outcome || ''}">${ic}</div>
+    <div style="min-width:0"><div class="t">${esc(e.title)}</div><div class="d">${vnDate(e.date)} · ${esc(who.name)} · ${(KIND[e.kind] || ['', ''])[1]}</div></div></div>`;
+}
+const inboxTabs = () => `<div class="tabs" id="ib-tabs">${[['chat', 'Trò chuyện'], ['list', 'Tất cả tin']].map(([k, l]) =>
+  `<button data-t="${k}" class="${S.inboxView === k ? 'active' : ''}">${l}</button>`).join('')}</div>`;
+function renderInbox() {
+  if (S.inboxView === 'chat') return renderChat();
+  renderInboxList();
+  $('#page-inbox').insertAdjacentHTML('afterbegin', inboxTabs());
+}
+
+// ---- conversations: one thread per sender
+const PERSONAS_FB = {assistant: {name: 'Trợ lý HLV', icon: '🧢'}, fitness: {name: 'HLV thể lực', icon: '💪'},
+  medical: {name: 'Bác sĩ trưởng', icon: '🩺'}, analyst: {name: 'Phân tích dữ liệu', icon: '🤖'}, scout: {name: 'Tuyển trạch viên', icon: '🔭'},
+  director: {name: 'Giám đốc thể thao', icon: '💼'}, academy: {name: 'Giám đốc học viện', icon: '🌱'}, board: {name: 'Ban lãnh đạo', icon: '🏛'}};
+function persona(key, e) {
+  const P = S.bundle.personas || PERSONAS_FB;
+  if (key && key.startsWith('player:')) {
+    const pid = Number(key.split(':')[1]);
+    const sq = S.bundle.squad.find(p => p.id === pid) || S.bundle.youth.youth.find(p => p.id === pid);
+    return {name: (e && e.from_name) || (sq && sq.name) || 'Cầu thủ', role: sq ? `${sq.pos} · ${sq.age} tuổi` : 'Cầu thủ', pid};
+  }
+  const p = P[key] || {name: key, icon: '•', role: ''};
+  return {name: p.name, role: p.role, icon: p.icon};
+}
+const avatar = (p, cls = '') => p.pid ? `<img class="av ${cls}" src="/face/${p.pid}.png" onerror="this.style.visibility='hidden'">`
+  : `<span class="av ${cls}">${p.icon || '•'}</span>`;
+function threads() {
+  const map = new Map();
+  for (const e of S.bundle.inbox) {
+    const k = e.from || 'assistant';
+    if (!map.has(k)) map.set(k, {key: k, events: [], unread: 0, info: persona(k, e)});
+    const t = map.get(k);
+    t.events.push(e);
+    if (!e.read) t.unread++;
+  }
+  return [...map.values()];
+}
+// Like a messenger: the conversations (one per person), the newest first; on the phone the list, and a
+// conversation on the whole screen once tapped (back: the list). Read on one device, read on the other.
+const PHONE_Q = matchMedia('(max-width: 760px)');
+const ago = iso => {
+  const days = Math.round((new Date(S.bundle.date + 'T00:00:00') - new Date(iso + 'T00:00:00')) / 864e5);
+  return days <= 0 ? 'Hôm nay' : days === 1 ? 'Hôm qua' : days < 7 ? `${days} ngày` : shortDate(iso);
+};
+function threadList(ts) {
+  return ts.map(t => {
+    const last = t.events[0];
+    return `<div class="thread ${t.key === S.thread && !(PHONE_Q.matches && !S.threadOpen) ? 'sel' : ''} ${t.unread ? 'unread' : ''}" data-thread="${esc(t.key)}">
+      ${avatar(t.info)}<div class="tt"><div class="tn"><span>${esc(t.info.name)}</span><small>${ago(last.date)}</small></div>
+      <div class="tl">${last.reply_text ? 'Bạn: ' + esc(last.reply_text) : esc(last.title)}</div></div>${t.unread ? `<span class="badge">${t.unread}</span>` : ''}</div>`;
+  }).join('') || '<div class="empty">Chưa có tin nhắn.</div>';
+}
+function renderChat() {
+  const ts = threads();
+  const phone = PHONE_Q.matches;
+  let cur = ts.find(t => t.key === S.thread) || (phone ? null : ts.find(t => t.unread) || ts[0]);
+  if (phone && !S.threadOpen) cur = null;
+  if (cur) S.thread = cur.key;
+  const total = ts.reduce((a, t) => a + t.unread, 0);
+  $('#page-inbox').innerHTML = `<div class="chat ${cur ? 'open' : ''}">
+    <div class="threads"><div class="threads-h"><b>Đoạn chat</b><span class="sub" id="ib-total">${total ? total + ' chưa đọc' : ''}</span>
+      <button class="ghost mini" data-t="list" id="ib-all" title="Tất cả tin theo loại">☰ Tất cả tin</button></div>
+      <div class="threads-l">${threadList(ts)}</div></div>
+    <div class="conv" id="conv">${cur ? convHtml(cur) : '<div class="conv-empty">Chọn một cuộc trò chuyện.</div>'}</div></div>`;
+  scrollConv();
+  if (cur && cur.unread) markRead(cur.events.filter(e => !e.read).map(e => e.id));
+}
+function openThread(key) {
+  S.thread = key;
+  if (PHONE_Q.matches && !S.threadOpen) {        // the phone's back button closes the conversation
+    S.threadOpen = true;
+    try { history.pushState({thread: key}, '', location.hash); } catch (e) {}
+  }
+  S.dirty.inbox = true;
+  render('inbox');
+}
+window.addEventListener('popstate', () => {
+  if (S.threadOpen) { S.threadOpen = false; S.dirty.inbox = true; if (S.page === 'inbox') render('inbox'); }
+});
+// an unread count changed elsewhere (read on the phone / on the PC): the badges, without drawing the page again
+function inboxBadges() {
+  $('#nb-inbox').textContent = S.bundle.inbox.filter(e => !e.read).length || '';
+  S.dirty.home = true;
+  if (S.page !== 'inbox') { S.dirty.inbox = true; return; }
+  const box = document.querySelector('.threads-l');
+  if (box) {
+    const ts = threads(), y = box.scrollTop, total = ts.reduce((a, t) => a + t.unread, 0);
+    box.innerHTML = threadList(ts);
+    box.scrollTop = y;
+    const tt = $('#ib-total');
+    if (tt) tt.textContent = total ? total + ' chưa đọc' : '';
+  }
+  document.querySelectorAll('.msg[data-msg]').forEach(m => {
+    const e = S.bundle.inbox.find(x => x.id === m.dataset.msg);
+    if (e) m.classList.toggle('unread', !e.read);
+  });
+}
+async function syncUnread(sig) {
+  if (S.unreadBusy || !S.bundle) return;
+  S.unreadBusy = true;
+  try {
+    const r = await api('/api/unread');
+    const un = new Set(r.ids || []), fresh = S.readNow || {}, now = Date.now();
+    let changed = false;
+    for (const e of S.bundle.inbox) {
+      const rd = !un.has(e.id) || now - (fresh[e.id] || 0) < 8000;   // read here a moment ago: still read
+      if (!!e.read !== rd) { e.read = rd; changed = true; }
+    }
+    S.unreadSig = sig;
+    if (changed) inboxBadges();
+  } catch (e) {} finally { S.unreadBusy = false; }
+}
+function convHtml(t) {
+  const evs = t.events.slice(0, 80).reverse();
+  let day = null;
+  const since = new Date(new Date(S.bundle.date + 'T00:00:00') - 14 * 864e5).toISOString().slice(0, 10);
+  const lastAsk = [...evs].reverse().find(e => e.kind !== 'followup');
+  const canAsk = e => e === lastAsk || e.date >= since;
+  const bubbles = evs.map(e => {
+    const [ic, label] = KIND[e.kind] || ['•', ''];
+    const players = (e.players || []).filter(id => id !== t.info.pid).slice(0, 8);
+    const links = [
+      ...players.map(id => `<button class="ghost mini" data-pid="${id}">${face(id)} ${esc((S.bundle.squad.find(p => p.id === id) || {}).name || 'Xem cầu thủ')}</button>`),
+      e.match ? `<button class="ghost mini click-match" data-match="${esc(e.match)}">Xem trận đấu</button>` : '',
+      e.fixture ? `<button class="ghost mini" data-go="match">Phân tích trận</button>` : ''].join('');
+    const ask = canAsk(e) && !e.reply && (e.choices || []).length
+      ? `<div class="choices">${e.choices.map(c => `<button data-reply="${esc(e.id)}" data-choice="${esc(c.id)}">${esc(c.label)}</button>`).join('')}</div>` : '';
+    const sep = e.date !== day ? `<div class="day-sep"><span>${vnDate(e.date)}</span></div>` : '';
+    day = e.date;
+    return `${sep}<div class="brow in">${avatar(t.info, 'sm')}<div class="bub in ${e.kind} ${e.outcome || ''}"><div class="bt">${e.kind !== 'followup' ? `<span class="k">${ic} ${label}</span>` : ''}${e.kind !== 'followup' ? esc(e.title) : ''}</div>
+      <div class="bb">${esc(e.body)}</div>${links ? `<div class="links">${links}</div>` : ''}${ask}</div></div>
+      ${e.reply_text ? `<div class="brow out"><div class="bub out"><div class="bb">${esc(e.reply_text)}</div><div class="bm">${vnDate(e.replied)} · Đã gửi</div></div></div>` : ''}`;
+  }).join('');
+  return `<div class="conv-head"><button class="ghost back" id="conv-back" title="Các cuộc trò chuyện">‹</button>${avatar(t.info, 'lg')}<div class="who"><b>${esc(t.info.name)}</b><div class="sub">${esc(t.info.role || '')}</div></div>
+    ${t.info.pid ? `<button class="ghost mini" data-pid="${t.info.pid}" style="margin-left:auto">Hồ sơ</button>` : ''}</div>
+    <div class="bubbles" id="bubbles">${bubbles}</div>`;
+}
+function scrollConv() {
+  const go = () => { const el = $('#bubbles'); if (el) el.scrollTop = el.scrollHeight; };
+  go();
+  setTimeout(go, 150);                          // again once the faces and fonts are in
+}
+async function sendReply(id, choice, btn) {
+  btn.closest('.choices').querySelectorAll('button').forEach(x => x.disabled = true);
+  let out;
+  try { out = await (await post('/api/reply', {id, choice})).json(); } catch (e) { out = null; }
+  if (!out || !out.ok) { btn.closest('.choices').querySelectorAll('button').forEach(x => x.disabled = false); return; }
+  const e = S.bundle.inbox.find(x => x.id === id);
+  const c = (e.choices || []).find(x => x.id === choice);
+  Object.assign(e, {reply: choice, reply_text: c ? c.label : '', replied: out.event.date, read: true});
+  S.bundle.inbox.unshift(out.event);
+  S.dirty.inbox = true;
+  if (S.page === 'inbox') render('inbox');
+  const a = out.action || '';
+  if (a === 'match' || a === 'youth') setTimeout(() => show(a), 700);
+  else if (a.startsWith('player:')) { const [, pid, tab] = a.split(':'); setTimeout(() => openPlayer(pid, tab), 500); }
+}
+
+function renderInboxList() {
+  const b = S.bundle;
+  const kinds = [...new Set(b.inbox.map(e => e.kind))];
+  const list = b.inbox.filter(e => S.inboxFilter === 'all' || (S.inboxFilter === 'unread' ? !e.read : e.kind === S.inboxFilter));
+  const sel = b.inbox.find(e => e.id === S.inboxSel) || list[0];
+  if (sel && !S.inboxSel) S.inboxSel = sel.id;
+  $('#page-inbox').innerHTML = `
+    <div class="filters">
+      <div class="seg" id="inbox-filter">${[['all', 'Tất cả'], ['unread', 'Chưa đọc'], ...kinds.map(k => [k, (KIND[k] || ['', k])[1]])]
+        .map(([k, l]) => `<button data-f="${k}" class="${S.inboxFilter === k ? 'active' : ''}">${l}</button>`).join('')}</div>
+      <button class="ghost" id="read-all">Đánh dấu đã đọc tất cả</button></div>
+    <div class="inbox"><div class="list">${list.slice(0, S.inboxLimit).map(msgRow).join('') || '<div class="empty">Không có tin.</div>'}
+      ${list.length > S.inboxLimit ? '<div class="empty"><button id="inbox-more">Xem thêm</button></div>' : ''}</div>
+      <div class="reader" id="reader">${sel ? readerHtml(sel) : ''}</div></div>`;
+  if (sel && !sel.read) markRead([sel.id]);
+}
+function readerHtml(e) {
+  const [ic, label] = KIND[e.kind] || ['•', ''];
+  let extra = '';
+  if (e.match) {
+    const m = S.bundle.matches.find(x => x.key === e.match);
+    if (m) extra = `<div class="card" style="margin-top:14px">${matchDetail(m)}</div>`;
+  }
+  const players = (e.players || []).slice(0, 12).map(id => `<button data-pid="${id}" class="ghost" style="margin:4px 6px 0 0">${face(id)} Xem cầu thủ</button>`).join('');
+  return `<div class="sub">${ic} ${label} · ${vnDate(e.date)}</div><h2>${esc(e.title)}</h2>
+    <div class="body">${esc(e.body)}</div>${players ? `<div style="margin-top:12px">${players}</div>` : ''}${extra}`;
+}
+function markRead(ids) {
+  const b = S.bundle;
+  const fresh = S.readNow || (S.readNow = {}), now = Date.now();
+  b.inbox.forEach(e => { if (!ids || ids.includes(e.id)) { if (!e.read) fresh[e.id] = now; e.read = true; } });
+  post('/api/read', {ids});
+  $('#nb-inbox').textContent = b.inbox.filter(e => !e.read).length || '';
+  S.dirty.home = true;
+}
+
+// ------------------------------------------------------------------ next match
+function predBar(p, venue) {
+  const sc = (p.scores || []).map(x => { const s = venue === 'home' ? x.s : [x.s[1], x.s[0]]; return `${s[0]}–${s[1]} (${x.p}%)`; }).join(' · ');
+  return `<div class="pbar"><span class="w" style="flex:${p.w}">Thắng ${p.w}%</span><span class="d" style="flex:${p.d}">Hòa ${p.d}%</span><span class="l" style="flex:${p.l}">Thua ${p.l}%</span></div>
+    <div class="sub" style="margin-top:4px">Bàn thắng kỳ vọng: bạn ${String(p.xg[0]).replace('.', ',')} – đối thủ ${String(p.xg[1]).replace('.', ',')}${sc ? ` · tỉ số khả năng nhất ${sc}` : ''}</div>`;
+}
+function pitchXI(players, flip, captain) {
+  return `<div class="pitch xi">${players.map(p => {
+    let left = p.x / 104 * 100, top = 100 - (p.y / 50 * 84 + 8);
+    if (flip) { left = 100 - left; top = 100 - top; }
+    left = Math.max(7, Math.min(93, left));
+    const last = (p.last || []).slice(-3);
+    return `<div class="pp" style="left:${left}%;top:${top}%" data-pid="${p.id}" title="${esc(p.name)} · ${p.role} (hạng ${p.grade}) · OVR ${p.ovr}${p.stamina < 100 ? ' · thể lực ' + p.stamina + '%' : ''}${last.length ? ' · điểm gần đây ' + last.join(', ') : ''}">
+      <img src="/face/${p.id}.png" onerror="this.style.visibility='hidden'">${arrow(p.cond)}
+      <span class="n">${p.id === captain ? '©' : ''}${esc(p.name.split(' ').slice(-1)[0])}</span>
+      <span class="p">${p.role} · ${p.ovr}${p.inj ? ' · 🩹' : ''}${p.g ? ' · ⚽' + p.g : ''}</span></div>`;
+  }).join('')}</div>`;
+}
+function phaseBox(P, title) {
+  return P && P.phases ? `<div style="margin-top:10px"><div class="sub">${title}</div>
+    ${P.phases.map(p => `<div class="kv"><span>${esc(p.label)}</span><b>${esc(p.shape)}${p.moves.length ? ` <small>(${p.moves.map(m => `${esc(m.name || '')} ${m.from}→${m.to}`).join(', ')})</small>` : ''}</b></div>`).join('')}
+    ${P.presets.length ? `<div class="kv"><span>Bộ chiến thuật dự phòng</span><b>${P.presets.map(x => `#${x.n}: ${esc(x.shape)}`).join(' · ')}</b></div>` : ''}</div>` : '';
+}
+// match ratings on Dugout's 10-point scale (events.rating10: the game's rating stretched + goals and assists)
+const ratingChips = arr => (arr || []).map(r => `<span class="rt ${r >= 8 ? 'hi' : r >= 7 ? 'ok' : r < 6 ? 'lo' : ''}">${r}</span>`).join('');
+const rt = p => p.r10 ?? p.rating;
+// who a card is about: your club (green) or the opponent (red), so the two are never mixed up
+const sideTag = (who, name) => `<span class="stag ${who}">${who === 'me' ? 'ĐỘI BẠN' : 'ĐỐI THỦ'}${name ? ' · ' + esc(name) : ''}</span>`;
+const MATCH_SECTIONS = [['overview', 'Tổng quan'], ['lineup', 'Đội hình của bạn'], ['tactics', 'Chiến thuật & đá phạt'],
+  ['opponent', 'Đối thủ'], ['duels', 'Đối đầu'], ['form', 'Phong độ & lối chơi']];
+function renderMatch() {
+  const b = S.bundle, md = b.matchday;
+  if (!md || !md.fixtures.length) { $('#page-match').innerHTML = '<div class="empty">Chưa có trận nào sắp tới trong lịch.</div>'; return; }
+  const fxs = md.fixtures;
+  if (S.matchSel >= fxs.length) S.matchSel = 0;
+  const f = fxs[S.matchSel];
+  const me = b.club.name, them = f.opp_name;
+  const tabs = `<div class="tabs" id="mt-tabs">${fxs.map((x, k) => `<button data-t="${k}" class="${k === S.matchSel ? 'active' : ''}">${crest(x.opp, x.opp_name)} ${esc(x.opp_name)} · ${shortDate(x.date)}</button>`).join('')}</div>`;
+  const m = b.ai.match_model;
+  const modelNote = m ? `AI học từ ${m.matches.toLocaleString('vi')} trận đã đá trong save mùa này; kiểm tra trên ${m.test} trận gần nhất: đoán đúng kết quả ${(m.accuracy * 100).toFixed(1).replace('.', ',')}%.` : 'Chưa đủ trận đã đá để AI học, đang dùng hệ số mặc định.';
+  const teamBox = (tid, name) => {
+    const mine = tid === b.club.id;
+    const pos = mine ? f.pos_me : f.pos_opp;
+    return `<div class="team ${mine ? 'me' : 'opp'}">${crest(tid, name, 'lg')}${esc(name)}${pos ? `<small>hạng ${pos.pos}</small>` : ''}${sideTag(mine ? 'me' : 'opp')}</div>`;
+  };
+  const hero = `<div class="card match-top"><div class="match-hero">
+      ${teamBox(f.home, f.home_name)}
+      <div><div class="vs">VS</div><div class="sub">${f.hour != null ? f.hour + ':00' : ''}</div></div>
+      ${teamBox(f.away, f.away_name)}</div>
+    <div class="pillrow" style="justify-content:center;margin:10px 0"><span class="pill">${esc(f.comp_name)}</span><span class="pill">${f.venue === 'home' ? 'Sân nhà' : 'Sân khách'}</span><span class="pill">${weekday(f.date)} ${vnDate(f.date)}</span>
+      <span class="pill" style="color:var(--accent)">${f.days <= 0 ? 'Hôm nay' : f.days === 1 ? 'Ngày mai' : `còn ${f.days} ngày`}</span></div>
+    ${f.pred ? `<h3>AI dự đoán cho ${esc(me)} <span class="sub">với đội hình đề xuất</span></h3>${predBar(f.pred, f.venue)}
+      ${f.pred_current ? `<div class="sub" style="margin-top:8px">Nếu giữ đội hình Game Plan hiện tại: thắng ${f.pred_current.w}% · hòa ${f.pred_current.d}% · thua ${f.pred_current.l}%</div>` : ''}
+      <div class="sub" style="margin-top:4px">OVR trung bình đội hình (tính cả mũi tên phong độ): ${esc(me)} ${f.my_ovr} · ${esc(them)} ${f.opp_ovr}. ${modelNote}</div>` : '<div class="empty">Không đọc được đội hình đối thủ.</div>'}</div>`;
+  const derby = f.derby ? '<div class="derby">🔥 TRẬN DERBY</div>' : '';
+  if (!f.pred) { $('#page-match').innerHTML = tabs + derby + hero; return; }
+
+  // ---- your side
+  const swaps = md.changes.filter(c => c.type === 'swap'), moves = md.changes.filter(c => c.type === 'move');
+  const changes = md.changes.length ? `${swaps.map(c => `<div class="chg"><span class="in" data-pid="${c.in}">▲ ${esc(c.in_name)}</span> vào thay <span class="out" data-pid="${c.out}">▼ ${esc(c.out_name)}</span> <small>(${c.role})</small><div class="sub">${esc(c.why)}</div></div>`).join('')}
+      ${moves.map(c => `<div class="chg"><span data-pid="${c.id}">⇄ ${esc(c.name)}</span> ${c.from} → <b>${c.role}</b><div class="sub">${esc(c.why)}</div></div>`).join('')}`
+    : '<div class="note">Đội hình trong Game Plan của bạn đã là phương án tốt nhất.</div>';
+  const lineup = `<div class="grid g2 msec-body">
+    <div class="card side-me"><h3>${sideTag('me', me)} Đội hình đề xuất · ${esc(md.plan ? md.plan.shape : '')}</h3>
+      ${pitchXI(md.best, false, md.captain)}
+      <div class="sub" style="margin-top:8px">Theo sơ đồ trong Game Plan của bạn. Chọn người theo OVR ở đúng vị trí (trừ điểm nếu hạng vị trí B/C), mũi tên phong độ hôm nay, điểm 3 trận gần nhất và thể lực. Cầu thủ chấn thương bị loại.</div></div>
+    <div class="card side-me"><h3>${sideTag('me')} Thay đổi so với Game Plan hiện tại <span class="sub">${md.changes.length ? md.changes.length + ' thay đổi' : ''}</span></h3>${changes}
+      <div class="note">Trong game: màn hình Chiến thuật trước trận → <b>Thay đổi đội hình</b>. Lưu game sau khi đổi, Dugout đọc lại và kiểm tra.</div></div></div>`;
+  const T = f.tactics;
+  const tacRows = T.rows.filter(r => r.change);
+  const tac = `<div class="card side-me"><h3>${sideTag('me', me)} Chiến thuật đề xuất cho trận này <span class="sub">Game Plan · so với cài đặt hiện tại của bạn</span></h3>
+    <div class="tbl"><table class="tactics"><thead><tr><th>Mục</th><th>Bạn đang dùng</th><th>Nên dùng</th><th>Lý do</th></tr></thead><tbody>
+    ${T.rows.map(r => `<tr class="${r.change ? 'chg-row' : ''}"><td>${esc(r.label)}${r.en !== r.label ? ` <small>${esc(r.en)}</small>` : ''}</td><td>${esc(r.now ?? '—')}</td>
+      <td>${r.change ? '<b>' + esc(r.rec) + '</b>' : esc(r.rec ?? '—')}</td><td class="why">${esc(r.why || (r.change ? '' : 'Giữ nguyên'))}</td></tr>`).join('')}</tbody></table></div>
+    <h3 style="margin-top:14px">Hướng dẫn nâng cao</h3>
+    <div class="grid g2"><div>${T.instructions.map(x => `<div class="kv"><span>${x.have ? '✓' : '＋'} <b>${esc(x.text)}</b> <small>${x.kind}</small><br><small>${esc(x.why)}</small></span><small>${x.have ? 'đang dùng' : 'nên thêm'}</small></div>`).join('') || '<div class="sub">Không có đề xuất.</div>'}
+      ${(T.remove || []).map(x => `<div class="kv"><span>✕ <b>${esc(x.text)}</b><br><small>${esc(x.why)}</small></span><small style="color:var(--bad)">nên bỏ</small></div>`).join('')}</div>
+      <div class="note">Bạn đang dùng: ${T.current_instructions.map(x => esc(x.text)).join(', ') || 'không có'}.<br>
+      Trong game: màn hình Chiến thuật trước trận → <b>Chiến thuật của Đội</b> (Game Plan) và <b>Hướng dẫn nâng cao</b>.</div></div></div>`;
+  const SP = md.set_pieces || [];
+  const spChanges = SP.filter(r => r.change);
+  const setp = SP.length ? `<div class="card side-me"><h3>${sideTag('me')} Người đá phạt <span class="sub">so với lựa chọn hiện tại trong game</span></h3>
+    ${SP.map(r => `<div class="kv ${r.change ? 'chg-row' : ''}"><span><b>${esc(r.label)}</b><br><small>${esc(r.rec.why)}</small>${r.note ? `<br><small style="color:var(--warn)">${esc(r.note)}</small>` : ''}</span>
+      <span style="text-align:right">${r.change ? `<span class="out">${esc(r.cur.name)}</span> → ` : ''}<b data-pid="${r.rec.id}" class="lnk">${esc(r.rec.name)}</b>${r.change ? '' : ' <small>✓ giữ</small>'}</span></div>`).join('')}
+    ${md.aerial && md.aerial.length ? `<div class="sub" style="margin-top:8px">Điểm đến bóng bổng/phạt góc: ${md.aerial.map(a => `${esc(a.name)} (${a.height} cm, đánh đầu ${a.heading})`).join(', ')}.</div>` : ''}
+    <div class="note">Trong game: màn hình Chiến thuật → <b>Chọn Cầu thủ Đá Phạt</b>. Người đá phải có mặt trên sân; AI chọn trong đội hình đề xuất.</div></div>` : '';
+
+  // ---- the opponent
+  const res6 = (f.opp_results || []).map(r => `<span class="res ${r.outcome}" title="${vnDate(r.date)} · ${r.home ? '' : '@ '}${esc(r.opp_name)} ${r.gf}–${r.ga} · ${esc(r.comp)}">${{W: 'T', D: 'H', L: 'B'}[r.outcome]}</span>`).join('');
+  const gf = (f.opp_results || []).reduce((a, r) => a + r.gf, 0), ga = (f.opp_results || []).reduce((a, r) => a + r.ga, 0), n = (f.opp_results || []).length || 1;
+  const threat = t => `<div class="kv" data-pid="${t.id}" style="cursor:pointer"><span>${face(t.id)} ${arrow(t.cond)} <b class="opp-name">${esc(t.name)}</b> <small>${t.role} · OVR ${t.ovr}</small><br>
+      <small>${t.g || 0} bàn · ${t.a || 0} kiến tạo mùa này · ${t.why.map(esc).join(', ')}</small></span><span>${ratingChips(t.last10 || t.last)}</span></div>`;
+  const theirs = `<div class="card side-opp"><h3>${sideTag('opp', them)} Đội hình dự kiến · ${esc(f.opp_shape || '')} <span class="sub">${f.opp_manager ? 'HLV ' + esc(f.opp_manager) : ''}</span></h3>
+      ${pitchXI(f.opp_xi, true)}
+      <div class="sub" style="margin-top:8px">${f.opp_source === 'gameplan' ? 'Lấy từ Game Plan hiện tại của họ trong save (đã xoay theo góc nhìn của bạn: họ tấn công xuống dưới). Game có thể đổi người sát giờ đá.' : 'Không đọc được Game Plan của họ: dùng đội hình ra sân trận gần nhất.'}
+      ${f.opp_xi.filter(p => p.replaces).map(p => `<br>🩹 ${esc(p.replaces)} chấn thương → ${esc(p.name)} vào thay.`).join('')}</div></div>`;
+  const opp = `<div class="card side-opp"><h3>${sideTag('opp', them)} Phong độ và cầu thủ nguy hiểm</h3>
+    <div class="kv"><span>${n} trận gần nhất</span><span class="pillrow">${res6}</span></div>
+    <div class="kv"><span>Bàn thắng / thua mỗi trận</span><b>${(gf / n).toFixed(1).replace('.', ',')} / ${(ga / n).toFixed(1).replace('.', ',')}</b></div>
+    ${f.pos_opp ? `<div class="kv"><span>Bảng xếp hạng</span><b>hạng ${f.pos_opp.pos} · ${f.pos_opp.pts} điểm · ${f.pos_opp.gf}–${f.pos_opp.ga}</b></div>` : ''}
+    <h3 style="margin-top:12px">Cầu thủ nguy hiểm</h3>${f.threats.map(threat).join('')}
+    <h3 style="margin-top:12px">Điểm yếu có thể khai thác</h3>${f.weak.map(w => `<div class="kv"><span>• ${esc(w)}</span></div>`).join('') || '<div class="sub">Không thấy điểm yếu rõ rệt.</div>'}</div>`;
+  const oppPlan = f.opp_plan || (f.opp_set_pieces || []).length || (f.opp_phases && f.opp_phases.phases) ? `<div class="card side-opp"><h3>${sideTag('opp', them)} Game Plan của họ</h3>
+    ${f.opp_plan ? `${f.opp_plan.rows.map(r => `<div class="kv"><span>${esc(r.label)}</span><b>${esc(r.text)}</b></div>`).join('')}
+      <div class="kv"><span>Hướng dẫn nâng cao</span><b>${f.opp_plan.instructions.map(x => esc(x.text)).join(', ') || 'không có'}</b></div>` : ''}
+    ${phaseBox(f.opp_phases, 'Sơ đồ của họ theo tình huống (AI có thể chuyển sang bộ dự phòng)')}
+    ${(f.opp_set_pieces || []).length ? `<h3 style="margin-top:12px">Người đá phạt của họ</h3>${f.opp_set_pieces.map(t => `<div class="kv"><span>${esc(t.label)}</span><span style="text-align:right"><b data-pid="${t.id}" class="lnk opp-name">${esc(t.name)}</b><br><small>${esc(t.why)}</small></span></div>`).join('')}` : ''}</div>` : '';
+
+  // ---- duels: their attacker (red) against your defender (green)
+  const duel = x => `<div class="duel ${x.level}">
+      <div class="duel-h"><b>${esc(x.label)}</b><span class="lv">nguy hiểm ${x.level}</span></div>
+      <div class="duel-row"><div class="duel-p opp"><small>${esc(them)} tấn công</small>${arrow(x.att.cond)} <span data-pid="${x.att.id}" class="lnk">${esc(x.att.name)}</span> <small>(${x.att.role})</small></div>
+        <div class="duel-vs">vs</div>
+        <div class="duel-p me"><small>${esc(me)} phòng ngự</small>${arrow(x.def.cond)} <span data-pid="${x.def.id}" class="lnk">${esc(x.def.name)}</span> <small>(${x.def.role})</small></div></div>
+      <div class="sub">${x.notes.map(esc).join(' · ')} <small>(số trước: ${esc(them)}, số sau: ${esc(me)})</small></div>${x.tip ? `<div class="tip">→ ${esc(x.tip)}</div>` : ''}</div>`;
+  const duels = `<div class="card"><h3>Đối đầu trực tiếp <span class="sub">tiền đạo/tiền vệ cánh của ${esc(them)} gặp hậu vệ của bạn</span></h3>
+    ${f.matchups.map(duel).join('') || '<div class="sub">—</div>'}</div>`;
+
+  // ---- form and how you play
+  const form = `<div class="card side-me"><h3>${sideTag('me', me)} Phong độ hôm nay <span class="sub">mũi tên trong game · điểm 5 trận gần nhất</span></h3>
+    <div class="tbl"><table><thead><tr><th></th><th>Cầu thủ</th><th>VT</th><th class="c">Phong độ</th><th class="num">OVR</th><th>Điểm gần đây</th><th class="num">TB mùa</th>
+      <th class="num">Thể lực</th><th class="num">Phút 14 ngày</th><th>Game Plan</th><th class="c">AI chọn</th></tr></thead><tbody>
+    ${md.form.map(r => `<tr class="click" data-pid="${r.id}"><td>${face(r.id)}</td><td><span class="name">${esc(r.name)}</span>${r.inj ? ` <span class="tag inj">Chấn thương ${r.inj} ngày</span>` : ''}</td><td>${r.pos}</td>
+      <td class="c">${arrow(r.cond)} <small>${r.arrow}</small></td><td class="num">${ovr(r.ovr)}</td><td>${ratingChips(r.last10 || r.last)}</td><td class="num">${r.avg10 ?? r.avg ?? ''}</td>
+      <td class="num">${r.stamina}%</td><td class="num">${r.min14 || ''}</td><td>${{start: '<b>Đá chính</b>', bench: 'Dự bị', out: '<small>—</small>'}[r.plan]}</td>
+      <td class="c">${r.rec ? '✓' : ''}</td></tr>`).join('')}</tbody></table></div></div>`;
+  const st = md.style || {};
+  const types = st.types_scored ? Object.entries(st.types_scored) : [];
+  const TYPE_VI = {dribbling: 'Rê bóng', pass: 'Phối hợp', cross: 'Tạt bóng', through_ball: 'Chọc khe', set_piece: 'Cố định', penalties: 'Phạt đền'};
+  const sumT = types.reduce((a, [, v]) => a + v, 0) || 1;
+  const conc = st.types_conceded ? Object.entries(st.types_conceded) : [];
+  const sumC = conc.reduce((a, [, v]) => a + v, 0) || 1;
+  const styleCard = types.length ? `<div class="card side-me"><h3>${sideTag('me', me)} Cách đội bạn chơi mùa này <span class="sub">${st.matches || ''} trận · thống kê của game</span></h3>
+    ${st.areas ? `<div class="kv"><span>Khu vực tấn công</span><b>Trái ${st.areas[0]}% · Giữa ${st.areas[1]}% · Phải ${st.areas[2]}%</b></div>` : ''}
+    <div class="grid g2" style="margin-top:8px"><div><div class="sub">Ghi bàn từ</div>${types.map(([k, v]) => `<div class="fitbar"><span>${TYPE_VI[k] || k}</span><b>${v}</b></div>${pbar(v, sumT, '#22c55e')}`).join('')}</div>
+    <div><div class="sub">Thủng lưới từ</div>${conc.map(([k, v]) => `<div class="fitbar"><span>${TYPE_VI[k] || k}</span><b>${v}</b></div>${pbar(v, sumC, '#ef4444')}`).join('')}</div></div>
+    ${st.times_scored ? `<div class="sub" style="margin-top:10px">Bàn thắng / thua theo từng 15 phút</div><div class="periods">${['0–15', '16–30', '31–45', '46–60', '61–75', '76–90'].map((l, k) =>
+      `<div><div class="bars2"><span class="g" style="height:${Math.min(60, (st.times_scored[k] || 0) * 3)}px" title="Ghi ${st.times_scored[k]}"></span><span class="c" style="height:${Math.min(60, (st.times_conceded[k] || 0) * 3)}px" title="Thủng ${st.times_conceded[k]}"></span></div><small>${l}'</small><small><b style="color:#86efac">${st.times_scored[k]}</b> / <b style="color:#fca5a5">${st.times_conceded[k]}</b></small></div>`).join('')}</div>` : ''}
+    ${st.periods_note ? `<div class="note">${esc(st.periods_note)}</div>` : ''}
+    ${(st.rankings || []).length ? `<div class="sub" style="margin-top:8px">Dẫn đầu đội: ${st.rankings.map(r => `${esc(r.label)} <b data-pid="${r.id}" class="lnk">${esc(r.name)}</b> (${r.value}${r.rate ? ', ' + r.rate + '%' : ''})`).join(' · ')}</div>` : ''}
+    ${phaseBox(md.plan_phases, 'Sơ đồ của bạn theo tình huống (Game Plan)')}</div>` : '';
+
+  // ---- overview: what to do before kick-off, what to watch out for
+  const instrAdd = T.instructions.filter(x => !x.have), instrDel = T.remove || [];
+  const todo = [];
+  if (md.changes.length) todo.push(`<div class="todo" data-msec="lineup"><b>Đội hình: ${md.changes.length} thay đổi</b><div class="sub">${swaps.slice(0, 4).map(c => `▲ ${esc(c.in_name)} thay ▼ ${esc(c.out_name)} (${c.role})`).join(' · ')}${moves.length ? `${swaps.length ? ' · ' : ''}${moves.slice(0, 3).map(c => `⇄ ${esc(c.name)} ${c.from} → ${c.role}`).join(' · ')}` : ''}</div></div>`);
+  if (tacRows.length) todo.push(`<div class="todo" data-msec="tactics"><b>Chiến thuật: ${tacRows.length} mục nên đổi</b><div class="sub">${tacRows.map(r => `${esc(r.label)}: ${esc(r.now ?? '—')} → <b>${esc(r.rec)}</b>`).join(' · ')}</div></div>`);
+  if (instrAdd.length || instrDel.length) todo.push(`<div class="todo" data-msec="tactics"><b>Hướng dẫn nâng cao</b><div class="sub">${[...instrAdd.map(x => '＋ ' + esc(x.text)), ...instrDel.map(x => '✕ ' + esc(x.text))].join(' · ')}</div></div>`);
+  if (spChanges.length) todo.push(`<div class="todo" data-msec="tactics"><b>Người đá phạt: ${spChanges.length} thay đổi</b><div class="sub">${spChanges.map(r => `${esc(r.label)}: ${esc(r.cur.name)} → <b>${esc(r.rec.name)}</b>`).join(' · ')}</div></div>`);
+  const hot = f.matchups.filter(x => x.level === 'cao');
+  const overview = `<div class="grid g2 msec-body">
+    <div class="card side-me"><h3>${sideTag('me', me)} Việc cần làm trước trận</h3>
+      ${todo.join('') || '<div class="note">Game Plan hiện tại đã khớp đề xuất của AI: không cần đổi gì.</div>'}
+      <div class="sub" style="margin-top:8px">Bấm vào từng mục để xem chi tiết.</div></div>
+    <div class="card side-opp"><h3>${sideTag('opp', them)} Cần chú ý</h3>
+      <div class="kv"><span>${n} trận gần nhất</span><span class="pillrow">${res6}</span></div>
+      ${f.threats.slice(0, 3).map(threat).join('')}
+      ${hot.length ? `<div class="todo warn" data-msec="duels"><b>Đối đầu nguy hiểm</b><div class="sub">${hot.map(x => `${esc(x.label)}: <span class="opp-name">${esc(x.att.name)}</span> vs <span class="me-name">${esc(x.def.name)}</span>`).join(' · ')}</div></div>` : ''}
+      ${f.weak.length ? `<div class="todo" data-msec="opponent"><b>Điểm yếu của họ</b><div class="sub">${f.weak.slice(0, 3).map(esc).join(' · ')}</div></div>` : ''}</div></div>`;
+
+  const count = {lineup: md.changes.length, tactics: tacRows.length + instrAdd.length + instrDel.length + spChanges.length, duels: hot.length};
+  const sec = MATCH_SECTIONS.some(([k]) => k === S.matchSec) ? S.matchSec : 'overview';
+  const nav = `<div class="msec">${MATCH_SECTIONS.map(([k, l], i) => `<button data-msec="${k}" class="${k === sec ? 'active' : ''} ${k === 'opponent' || k === 'duels' ? 'opp' : ''}">
+      <span class="num">${i + 1}</span>${l}${count[k] ? ` <span class="cnt ${k === 'duels' ? 'bad' : ''}">${count[k]}</span>` : ''}</button>`).join('')}</div>`;
+  const bodies = S.matchBodies = {
+    overview,
+    lineup,
+    tactics: `<div class="msec-body">${tac}${setp ? `<div style="margin-top:14px">${setp}</div>` : ''}</div>`,
+    opponent: `<div class="grid g2 msec-body">${theirs}<div>${opp}${oppPlan ? `<div style="margin-top:14px">${oppPlan}</div>` : ''}</div></div>`,
+    duels: `<div class="msec-body">${duels}</div>`,
+    form: `<div class="msec-body">${form}${styleCard ? `<div style="margin-top:14px">${styleCard}</div>` : ''}</div>`,
+  };
+  const body = bodies[sec];
+  $('#page-match').innerHTML = `${tabs}${derby}${hero}${nav}${body}`;
+  const ab = $('#page-match .msec button.active'), bar = $('#page-match .msec');   // the chosen section in view
+  if (ab && bar) bar.scrollLeft = Math.max(0, ab.offsetLeft - bar.offsetLeft - 16);
+}
+
+// A section of the next match: only its part changes (the page is not drawn again: the bar of sections stays
+// where it was, scrolled to the later ones on the phone, and the page does not jump to the top)
+function matchSection(sec) {
+  const page = $('#page-match'), nav = page.querySelector('.msec'), cur = page.querySelector('.msec-body');
+  const html = (S.matchBodies || {})[sec];
+  S.matchSec = sec;
+  try { history.replaceState(null, '', '#page=match&sec=' + sec + (S.matchSel ? '&m=' + S.matchSel : '')); } catch (e) {}
+  if (!nav || !cur || html == null) { S.dirty.match = true; return render('match'); }
+  nav.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.msec === sec));
+  cur.outerHTML = html;
+  const b = nav.querySelector(`button[data-msec="${sec}"]`);
+  if (b) {                                       // the chosen one in view, the bar not moved otherwise
+    const l = b.offsetLeft - nav.offsetLeft;
+    if (l < nav.scrollLeft || l + b.offsetWidth > nav.scrollLeft + nav.clientWidth)
+      nav.scrollTo({left: Math.max(0, l - (nav.clientWidth - b.offsetWidth) / 2), behavior: 'smooth'});
+  }
+  const el = page.querySelector('.msec-body');   // the section starts right under the bar
+  if (el) {
+    const y = el.getBoundingClientRect().top - page.getBoundingClientRect().top + page.scrollTop - nav.offsetHeight - 6;
+    if (page.scrollTop > y) page.scrollTop = Math.max(0, y);
+  }
+}
+
+// ------------------------------------------------------------------ fixtures
+function matchDetail(m) {
+  if (!m.played) return `<div class="sub">Chưa diễn ra · ${esc(m.comp_name)} · ${esc(m.round)}</div>`;
+  const own = {};                      // own goals (named from the live log): marked on the one who scored them
+  for (const o of [...((m.og || {}).home || []), ...((m.og || {}).away || [])]) if (o.id) own[o.id] = (own[o.id] || 0) + 1;
+  const side = arr => (arr || []).filter(p => p.min || p.start).sort((a, b) => (b.start - a.start) || (b.min - a.min)).map(p =>
+    `<div data-pid="${p.id}" style="cursor:pointer">${p.start ? '' : '<small>↑</small>'}<span>${esc(p.name)}</span>
+     ${p.g ? `<span class="goal">${'⚽'.repeat(Math.min(p.g, 4))}</span>` : ''}${own[p.id] ? `<small class="og" title="Phản lưới nhà">⚽ phản lưới</small>` : ''}${p.a ? `<small>🅰${p.a > 1 ? p.a : ''}</small>` : ''}
+     ${p.y ? '<small style="color:#eab308">▮</small>' : ''}${p.r ? '<small style="color:#ef4444">▮</small>' : ''}
+     <span class="r">${p.min}' ${p.rating ? `· ${rt(p)}` : ''}</span></div>`).join('');
+  const me = S.bundle && S.bundle.club.id, mine = me === m.home || me === m.away;
+  const tag = tid => mine ? sideTag(tid === me ? 'me' : 'opp') + ' ' : '';
+  return `<div class="grid g2"><div><h3>${tag(m.home)}${crest(m.home, m.home_name)} ${esc(m.home_name)}</h3><div class="lineup-list">${side(m.home_players)}</div></div>
+    <div><h3>${tag(m.away)}${crest(m.away, m.away_name)} ${esc(m.away_name)}</h3><div class="lineup-list">${side(m.away_players)}</div></div></div>
+    ${m.pens ? `<div class="sub">Luân lưu: ${m.pens[0]}–${m.pens[1]}</div>` : ''}
+    ${m.og && (m.og.home || m.og.away) ? `<div class="sub">Phản lưới nhà: ${[...(m.og.home || []).map(o => `${o.name ? esc(o.name) : 'không rõ ai'} (bàn cho ${esc(m.home_name)})`),
+      ...(m.og.away || []).map(o => `${o.name ? esc(o.name) : 'không rõ ai'} (bàn cho ${esc(m.away_name)})`)].join(', ')}</div>` : ''}`;
+}
+function fxRow(m, me) {
+  const mine = m.home === me ? 'me-home' : m.away === me ? 'me-away' : '';
+  const score = m.played ? `<div class="sc">${m.hg}–${m.ag}</div>` : `<div class="sc up">${m.hour != null ? m.hour + ':00' : 'vs'}</div>`;
+  const out = m.outcome && me ? res(m.outcome) : '';
+  return `<div class="fx ${mine}" data-fx="${esc(m.key || '')}">
+    <div class="when"><b style="color:var(--text)">${weekday(m.date)} ${shortDate(m.date)}</b>${m.hour != null && !m.played ? ` · ${m.hour}:00` : ''}<br><span style="color:var(--faint)" title="${esc(m.comp_name || '')}${m.round ? ' · ' + esc(m.round) : ''}">${esc(m.comp_name || '')}${m.round ? ' · ' + esc(m.round) : ''}</span></div>
+    <div class="h"><b>${esc(m.home_name)}</b>${crest(m.home, m.home_name)}</div>${score}
+    <div class="a">${crest(m.away, m.away_name)}<b>${esc(m.away_name)}</b></div><div>${out}</div>
+    ${m.played && m.home_players ? `<div class="fx-detail">${matchDetail(m).replace(/^<div class="grid g2">/, '<div class="grid g2" style="grid-column:1/-1">')}</div>` : ''}</div>`;
+}
+function renderFixtures() {
+  const b = S.bundle, me = b.club.id;
+  const tabs = [['list', 'Lịch & kết quả'], ['table', 'Bảng xếp hạng'], ['scorers', 'Vua phá lưới'], ['rounds', 'Các vòng đấu'], ['archive', 'Mùa trước']];
+  let body = '';
+  if (S.fixTab === 'list') {
+    let month = '';
+    body = b.matches.map(m => {
+      const mm = m.date.slice(0, 7);
+      const head = mm !== month ? `<div class="month">Tháng ${Number(mm.slice(5))}/${mm.slice(0, 4)}</div>` : '';
+      month = mm;
+      return head + fxRow(m, me);
+    }).join('') || '<div class="empty">Chưa có lịch thi đấu.</div>';
+    const r = b.home.record;
+    body = `<div class="hint">Bấm vào một trận đã đá để xem đội hình, người ghi bàn và điểm từng cầu thủ của cả hai đội.
+      Mùa này: ${r.w}T ${r.d}H ${r.l}B · ${r.gf}–${r.ga}</div>` + body;
+  } else if (S.fixTab === 'table') {
+    body = b.comps.filter(c => c.table.length || c.ties).map(c => c.table.length ? `<div class="card" style="margin-bottom:14px"><h3>${esc(c.name)}</h3>
+      <div class="tbl"><table><thead><tr><th class="num">#</th><th>Đội</th><th class="num">Tr</th><th class="num">T</th><th class="num">H</th><th class="num">B</th>
+      <th class="num">BT</th><th class="num">BB</th><th class="num">HS</th><th class="num">Điểm</th><th>5 trận gần nhất</th></tr></thead><tbody>
+      ${c.table.map(t => `<tr class="${t.team === me ? 'me' : ''}"><td class="num">${t.pos}</td><td>${crest(t.team, t.name)} ${esc(t.name)}</td>
+        <td class="num">${t.p}</td><td class="num">${t.w}</td><td class="num">${t.d}</td><td class="num">${t.l}</td><td class="num">${t.gf}</td>
+        <td class="num">${t.ga}</td><td class="num">${t.gf - t.ga > 0 ? '+' : ''}${t.gf - t.ga}</td><td class="num"><b>${t.pts}</b></td>
+        <td><span class="pillrow">${[...(t.form || '')].map(res).join('')}</span></td></tr>`).join('')}</tbody></table></div></div>`
+      : `<div class="card" style="margin-bottom:14px"><h3>${esc(c.name)}</h3>${(c.ties || []).map(t => `<div class="kv"><span>${esc(t.stage)}: ${esc(t.teams[0])} – ${esc(t.teams[1])}</span>
+        <span>${t.agg ? t.agg.join('–') : ''} ${t.complete && t.winner ? '✓ ' + esc(t.winner === t.ids[0] ? t.teams[0] : t.teams[1]) : ''}</span></div>`).join('') || '<div class="empty">Chưa có cặp đấu.</div>'}</div>`).join('');
+  } else if (S.fixTab === 'scorers') {
+    body = `<div class="grid g2">${b.comps.filter(c => c.scorers.length).map(c => `
+      <div class="card"><h3>Vua phá lưới · ${esc(c.name)}</h3>${rankList(c.scorers, me)}</div>
+      <div class="card"><h3>Kiến tạo · ${esc(c.name)}</h3>${rankList(c.assists, me)}</div>`).join('') || '<div class="empty">Chưa có dữ liệu.</div>'}</div>`;
+  } else if (S.fixTab === 'rounds') {
+    const comps = b.comps.filter(c => c.rounds && c.rounds.length);
+    const comp = comps.find(c => c.id === S.fixComp) || comps[0];
+    if (comp) {
+      const rounds = comp.rounds;
+      let cur = rounds.find(r => r.label === S.fixRound);
+      if (!cur) cur = rounds.find(r => r.matches.some(m => m.hg == null)) || rounds[rounds.length - 1];
+      body = `<div class="filters"><label>Giải<select id="fx-comp">${comps.map(c => `<option value="${c.id}" ${c === comp ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+        <label>Vòng<select id="fx-round">${rounds.map(r => `<option ${r === cur ? 'selected' : ''}>${esc(r.label)}</option>`).join('')}</select></label></div>
+        ${cur.matches.map(m => fxRow({...m, comp_name: '', round: ''}, 0)).join('')}`;
+    }
+  } else {
+    body = b.archive.length ? b.archive.map(s => `<div class="month">Mùa ${esc(s.season)} · ${s.record.w}T ${s.record.d}H ${s.record.l}B · ${s.record.gf}–${s.record.ga}</div>
+      ${s.matches.map(m => fxRow(m, me)).join('')}`).join('')
+      : '<div class="empty">Dugout lưu lại mọi trận đã đá. Các mùa trước sẽ hiện ở đây khi sang mùa mới (save chỉ giữ mùa hiện tại).</div>';
+  }
+  $('#page-fixtures').innerHTML = `<div class="tabs" id="fx-tabs">${tabs.map(([k, l]) => `<button data-t="${k}" class="${S.fixTab === k ? 'active' : ''}">${l}</button>`).join('')}</div>${body}`;
+}
+function rankList(rows, me) {
+  return rows.map(r => `<div class="kv" data-pid="${r.id}" style="cursor:pointer"><span>${r.rank}. ${face(r.id)} ${esc(r.name)}
+    <small>${crest(r.team, r.team_name)} ${esc(r.team_name)}</small></span><b style="${r.team === me ? 'color:var(--accent)' : ''}">${r.n}</b></div>`).join('');
+}
+
+// ------------------------------------------------------------------ squad
+function playerRows(list, opts = {}) {
+  if (!list.length) return '<div class="empty">Không có cầu thủ nào.</div>';
+  return `<div class="tbl"><table><thead><tr><th></th><th>Cầu thủ</th><th>VT</th><th class="c" title="Phong độ hôm nay: mũi tên trong game (A tốt nhất, E kém nhất)">PĐ</th><th class="num">Tuổi</th><th class="num">OVR</th>
+    <th class="num" title="Ngưỡng AI dự đoán (khoảng 80%)">Ngưỡng</th><th>Xu hướng</th><th>Phong cách</th>
+    ${opts.stats ? '<th class="num">Trận</th><th class="num">Bàn</th><th class="num">KT</th><th class="num">Điểm</th><th>Hợp đồng</th>' : ''}
+    ${opts.team ? '<th>CLB</th>' : ''}${opts.contract ? '<th>Hết HĐ</th><th class="num">Lương/năm</th>' : ''}${liveOn() ? '<th class="num" title="Đọc trực tiếp từ game đang chạy">Giá trị</th>' : ''}<th>Hợp vị trí</th><th></th></tr></thead><tbody>
+    ${list.map(p => `<tr class="click" data-pid="${p.id}"${opts.tab ? ` data-tab="${opts.tab}"` : ''}>
+      <td>${face(p.id)}</td>
+      <td><span class="name">${esc(p.name)}</span>${p.shirt ? ` <small>#${p.shirt}</small>` : ''}${tags(p)}<br><small>${esc(p.nation || '')}${p.role ? ' · ' + esc(p.role) : ''}</small></td>
+      <td title="${POS_VI[p.pos]}${p.played && p.played !== p.pos ? ` · đang đá ${POS_VI[p.played]}` : ''}">${p.pos}${p.played && p.played !== p.pos ? `<small> →${p.played}</small>` : ''}</td>
+      <td class="c">${arrow(p.cond)}</td><td class="num">${p.age}</td><td class="num">${ovr(p.ovr)}</td>
+      <td class="num" title="Khoảng 80%: ${p.peak_low}–${p.peak_high}, chạm ngưỡng ~${p.reach_age} tuổi">${ovr(p.peak)} <small>${p.reach_age > p.age ? p.reach_age + 't' : ''}</small></td>
+      <td>${trendCell(p)}</td>
+      <td class="style-cell" title="${esc(p.style)}${p.style_vi ? ' (' + esc(p.style_vi) + ')' : ''}">${esc(p.style || '—')}</td>
+      ${opts.stats ? `<td class="num">${p.apps ?? ''}</td><td class="num">${p.goals || ''}</td><td class="num">${p.assists || ''}</td>
+        <td class="num">${p.rating ? (p.rating10 ?? p.rating).toFixed(2) : ''}</td><td>${p.contract ? `<small>${p.contract[1]}/${p.contract[0]}</small>` : ''}</td>` : ''}
+      ${opts.team ? `<td>${crest(p.team, p.team_name)} <small>${esc(p.team_name)}</small></td>` : ''}
+      ${opts.contract ? `<td><small>${p.c_end ? `${Number(String(p.c_end).slice(4, 6))}/${String(p.c_end).slice(0, 4)}` : ''}</small></td><td class="num"><small>${p.wage ? money(p.wage) : ''}</small></td>` : ''}
+      ${liveOn() ? `<td class="num"><small>${S.live.values[p.id] ? money(S.live.values[p.id]) : ''}</small></td>` : ''}
+      <td>${chips(p)}</td>
+      <td class="nowrap">${p.training_n ? `<button class="bulb training" data-pid="${p.id}" data-tab="dev" title="Đang tập: ${esc((p.training_what || []).join(', '))}">⏳ ${p.training_n}</button> ` : ''}${p.advice_n ? `<button class="bulb" data-pid="${p.id}" data-tab="dev" title="${(p.advice_kinds || []).map(k => ({style: 'Nên đổi phong cách', skill: 'Nên tập kỹ năng', position: 'Nên luyện vị trí'}[k])).join(', ')}">💡 ${p.advice_n}</button>` : ''}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+function renderSquad() {
+  const b = S.bundle;
+  const f = S.squadFilter;
+  let list = b.squad;
+  if (f === 'advice') list = list.filter(p => p.advice_n);
+  else if (f === 'inj') list = list.filter(p => p.inj);
+  else if (f === 'young') list = list.filter(p => p.age <= 21);
+  else if (f === 'form') list = list.filter(p => p.cond >= 3).sort((a, b) => b.cond - a.cond || b.ovr - a.ovr);
+  const nAdv = b.squad.filter(p => p.advice_n).length;
+  const nForm = b.squad.filter(p => p.cond >= 3).length;
+  const head = `<div class="filters"><div class="seg" id="squad-view">
+      <button data-v="list" class="${S.squadView === 'list' ? 'active' : ''}">Danh sách</button>
+      <button data-v="plan" class="${S.squadView === 'plan' ? 'active' : ''}">Game Plan hiện tại</button>
+      <button data-v="pitch" class="${S.squadView === 'pitch' ? 'active' : ''}">Đội hình ra sân gần nhất</button></div>
+    <div class="seg" id="squad-filter">${[['all', `Tất cả (${b.squad.length})`], ['advice', `💡 Có gợi ý (${nAdv})`], ['form', `Phong độ A/B (${nForm})`], ['inj', 'Chấn thương'], ['young', 'U21']]
+      .map(([k, l]) => `<button data-f="${k}" class="${f === k ? 'active' : ''}">${l}</button>`).join('')}</div></div>
+    <div class="hint">Dữ liệu lấy thẳng từ save: đội hình, số áo, phong cách, kỹ năng, hạng vị trí và chỉ số hiện tại. Nút 💡 là cầu thủ AI gợi ý nên đổi phong cách, tập kỹ năng hoặc luyện vị trí trong game. Bấm vào để xem cách làm.</div>`;
+  let body;
+  const md = b.matchday;
+  if (S.squadView === 'plan' && md && md.current && md.current.length) {
+    body = `<div class="grid g2"><div class="card"><h3>Game Plan hiện tại trong game · ${esc(md.plan ? md.plan.shape : '')} <span class="more" data-go="match">So với đề xuất của AI →</span></h3>
+      ${pitchXI(md.current, false, md.captain)}<div class="sub" style="margin-top:8px">Đọc từ save: đội hình chính bạn đang đặt trong game, đúng vị trí trên sơ đồ. © = đội trưởng.</div></div>
+      <div class="card"><h3>Dự bị (${md.plan_bench.length})</h3>${md.plan_bench.map(p => `<div class="kv" data-pid="${p.id}" style="cursor:pointer"><span>${face(p.id)} ${arrow(p.cond)} ${esc(p.name)} <small>${p.role}</small></span>
+        <small>OVR ${p.ovr}${p.last && p.last.length ? ' · ' + p.last.slice(-3).join(', ') : ''}</small></div>`).join('')}
+      ${md.plan ? `<h3 style="margin-top:14px">Chiến thuật đang đặt</h3>${md.plan.rows.map(r => `<div class="kv"><span>${esc(r.label)}</span><b>${esc(r.text)}</b></div>`).join('')}
+        <div class="kv"><span>Hướng dẫn nâng cao</span><b>${md.plan.instructions.map(x => esc(x.text)).join(', ') || 'không có'}</b></div>` : ''}</div></div>`;
+  } else if (S.squadView === 'pitch' && b.lineup) {
+    const L = b.lineup;
+    const starters = L.players.filter(p => p.start);
+    const used = {};
+    const pp = starters.map(p => {
+      const key = p.pos_name || 'CMF';
+      const n = (used[key] = (used[key] || 0) + 1);
+      const same = starters.filter(q => (q.pos_name || 'CMF') === key).length;
+      let [x, y] = SPOT[key] || [50, 50];
+      if (same > 1) x = x + (n - (same + 1) / 2) * (key === 'CB' || key === 'CMF' || key === 'DMF' || key === 'CF' ? 22 : 12);
+      return `<div class="pp" style="left:${x}%;top:${y}%" data-pid="${p.id}"><img src="/face/${p.id}.png" onerror="this.style.visibility='hidden'">
+        <span class="n">${esc(p.name.split(' ').slice(-1)[0])}</span><span class="p">${p.pos_name} ${p.rating ? '· ' + rt(p) : ''}${p.g ? ' ⚽' + (p.g > 1 ? p.g : '') : ''}</span></div>`;
+    }).join('');
+    const bench = L.players.filter(p => !p.start);
+    body = `<div class="grid g2"><div class="card"><h3>Trận ${esc(L.comp)} gặp ${esc(L.opp)} · ${L.score} · ${vnDate(L.date)}</h3><div class="pitch lineup">${pp}</div></div>
+      <div class="card"><h3>Dự bị</h3>${bench.map(p => `<div class="kv" data-pid="${p.id}" style="cursor:pointer"><span>${face(p.id)} ${esc(p.name)}</span>
+        <small>${p.min ? p.min + "' vào sân" : 'không vào sân'}${p.rating ? ' · ' + rt(p) : ''}</small></div>`).join('')}</div></div>`;
+  } else {
+    body = playerRows(list, {stats: true});
+  }
+  $('#page-squad').innerHTML = head + body;
+}
+
+// ------------------------------------------------------------------ market
+function renderMarket() {
+  const b = S.bundle, m = b.market;
+  const tabs = [['plan', '📋 Kế hoạch hè'], ['search', 'Tìm cầu thủ'], ['prospects', `Tài năng trẻ (${m.prospects.length})`], ['expiring', `Hết hợp đồng cuối mùa (${(m.expiring || []).length})`],
+    ['free', 'Cầu thủ tự do'], ['listed', 'Danh sách đàm phán'], ['deals', 'Thỏa thuận'], ['needs', 'Đội hình cần gì']];
+  let body = '';
+  const note = '<div class="hint">Bấm vào cầu thủ để xem sự phát triển qua từng tuổi (tab "Theo tuổi") và so sánh với đội hình của bạn trước khi mua.</div>';
+  if (S.marketTab === 'plan') {
+    body = '<div id="plan-box"><div class="empty">Đang lập kế hoạch…</div></div>';
+    setTimeout(loadPlan, 0);
+  } else if (S.marketTab === 'search') {
+    body = `<form id="market-form" class="filters">
+      <label>Tên<input name="q" placeholder="Nhập tên cầu thủ" value="${esc(S.mq?.q || '')}"></label>
+      <label>Vị trí<select name="pos"><option value="">Tất cả</option>${POS.map(p => `<option ${S.mq?.pos === p ? 'selected' : ''}>${p}</option>`).join('')}</select></label>
+      <label>Tuổi từ<input name="age_min" type="number" min="15" max="45" value="${esc(S.mq?.age_min || '')}"></label>
+      <label>đến<input name="age_max" type="number" min="15" max="45" value="${esc(S.mq?.age_max || '')}"></label>
+      <label>OVR ≥<input name="min_ovr" type="number" min="40" max="99" value="${esc(S.mq?.min_ovr || '')}"></label>
+      <label>Ngưỡng ≥<input name="min_peak" type="number" min="40" max="99" value="${esc(S.mq?.min_peak || '')}"></label>
+      <label>Phong cách<select name="style"><option value="">Bất kỳ</option>${STYLES.map((s, i) => `<option value="${i + 1}" ${S.mq?.style == i + 1 ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+      <label>Có kỹ năng<select name="skill"><option value="">Bất kỳ</option>${SKILLS.map((s, i) => `<option value="${i}" ${S.mq?.skill === String(i) ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+      <label>Phạm vi<select name="scope">${[['all', 'Tất cả'], ['others', 'Đội khác'], ['free', 'Tự do'], ['mine', 'Đội của tôi']].map(([v, l]) => `<option value="${v}" ${S.mq?.scope === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label>Sắp xếp<select name="sort">${[['peak', 'Ngưỡng cao nhất'], ['growth', 'Còn tăng nhiều nhất'], ['ovr', 'OVR hiện tại'], ['young', 'Trẻ nhất'], ['pace', 'Vượt dự đoán nhiều nhất'], ['fit', 'Hợp vị trí đã chọn']]
+        .map(([v, l]) => `<option value="${v}" ${S.mq?.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="check"><input type="checkbox" name="regen" value="1" ${S.mq?.regen ? 'checked' : ''}>Chỉ regen</label>
+      <button class="primary" type="submit">Tìm</button></form>${note}
+      <div id="market-count" class="hint"></div><div id="market-result">${S.marketResult ? playerRows(S.marketResult.players, {team: true, tab: 'age'}) : '<div class="empty">Chọn điều kiện rồi bấm Tìm.</div>'}</div>`;
+  } else if (S.marketTab === 'prospects') {
+    body = note + playerRows(m.prospects, {team: true, tab: 'age'});
+  } else if (S.marketTab === 'expiring') {
+    body = `<div class="hint">Cầu thủ đội khác có hợp đồng hết hạn cuối mùa này (đọc từ save): có thể đàm phán để ký tự do mùa sau. Sắp xếp theo ngưỡng AI dự đoán.</div>`
+      + playerRows(m.expiring || [], {team: true, tab: 'age', contract: true});
+  } else if (S.marketTab === 'needs') {
+    body = squadNeeds(m.squad_comp);
+  } else if (S.marketTab === 'free') {
+    body = note + playerRows(m.free, {team: true, tab: 'age'});
+  } else if (S.marketTab === 'listed') {
+    body = '<div class="hint">Các cầu thủ trong danh sách đàm phán/theo dõi của CLB trong game.</div>' + playerRows(m.listed, {team: true, tab: 'age'});
+  } else {
+    body = m.agreements.length ? `<div class="tbl"><table><thead><tr><th>Cầu thủ</th><th>Loại</th><th>Từ</th><th>Đến</th><th class="num">Phí</th><th>Trạng thái</th></tr></thead><tbody>
+      ${m.agreements.map(a => `<tr class="click" data-pid="${a.id}"><td>${face(a.id)} ${esc(a.player)}</td><td>${a.kind === 'loan' ? 'Cho mượn' : 'Chuyển nhượng'}</td>
+        <td>${esc(a.seller)}</td><td>${esc(a.buyer)}</td><td class="num">${money(a.fee)}</td>
+        <td>${({pending: 'Đang chờ', accepted: 'Đã chấp nhận', completed: 'Hoàn tất', rejected: 'Bị từ chối'})[a.state] || esc(a.state)}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="empty">Không có thỏa thuận nào đang diễn ra.</div>';
+  }
+  $('#page-market').innerHTML = `<div class="tabs" id="mk-tabs">${tabs.map(([k, l]) => `<button data-t="${k}" class="${S.marketTab === k ? 'active' : ''}">${l}</button>`).join('')}</div>${body}`;
+  if (S.marketTab === 'search' && S.marketResult) $('#market-count').textContent = `${S.marketResult.total} cầu thủ phù hợp (hiện ${S.marketResult.players.length} đầu tiên).`;
+}
+const liveOn = () => !!(S.live && S.live.values && Object.keys(S.live.values).length);
+// ------------------------------------------------------------------ summer plan
+async function loadPlan() {
+  const box = $('#plan-box');
+  if (!box) return;
+  let p;
+  try { p = await api('/api/plan'); } catch (e) { box.innerHTML = '<div class="empty">Chưa lập được kế hoạch (Dugout đang đọc save).</div>'; return; }
+  if ($('#plan-box')) $('#plan-box').innerHTML = renderPlan(p);
+}
+function vnd(iso) { const [y, m, d] = iso.split('-'); return `${+d}/${+m}/${y}`; }
+function planValue(x) { return `${money(x.value)}${x.value_real ? '' : ' <small title="Ước tính từ OVR, tuổi, tiềm năng, hợp đồng">ước tính</small>'}`; }
+function planRows(list, cols) {
+  if (!list || !list.length) return '<div class="sub">Không có.</div>';
+  const head = {why: 'Lý do', action: 'Nên làm', fee: 'Phí dự kiến', value: 'Giá trị', tags: 'Ghi chú', gain: 'Nâng cấp', club: 'CLB', contract: 'Hết hợp đồng', salary: 'Lương/năm'};
+  return `<div class="tbl"><table><thead><tr><th>Cầu thủ</th><th class="num">Tuổi</th><th>VT</th><th class="num">OVR → mùa sau</th><th class="num">Ngưỡng</th>${cols.map(c => `<th${['fee', 'value', 'gain', 'salary'].includes(c) ? ' class="num"' : ''}>${head[c]}</th>`).join('')}</tr></thead><tbody>
+    ${list.map(x => `<tr class="click" data-pid="${x.id}" data-tab="age"><td>${face(x.id)} ${esc(x.name)}</td><td class="num">${x.age}</td><td>${x.pos}</td>
+      <td class="num">${x.ovr} → ${Math.round(x.next)}</td><td class="num">${x.peak}</td>
+      ${cols.map(c => c === 'why' ? `<td>${esc(x.why)}</td>` : c === 'action' ? `<td><b>${esc(x.action)}</b></td>` : c === 'fee' ? `<td class="num">${x.fee ? money(x.fee) : '<b class="up">0 (tự do)</b>'}</td>`
+        : c === 'value' ? `<td class="num">${planValue(x)}</td>` : c === 'gain' ? `<td class="num up">+${x.gain}</td>` : c === 'club' ? `<td>${x.team ? crest(x.team, x.team_name) + ' ' + esc(x.team_name) : '<small>tự do</small>'}</td>`
+        : c === 'contract' ? `<td>${esc(x.contract)}</td>` : c === 'salary' ? `<td class="num">${money(x.salary)}</td>` : `<td>${(x.tags || []).map(t => `<span class="pill">${esc(t)}</span>`).join(' ')}</td>`).join('')}</tr>`).join('')}
+    </tbody></table></div>`;
+}
+function renderPlan(p) {
+  const b = p.budget, t = p.totals;
+  const days = p.days_to_window;
+  const head = `<div class="card"><h3>Kỳ chuyển nhượng hè ${vnd(p.window[0])} – ${vnd(p.window[1])} <small>${days > 0 ? `còn ${days} ngày trong game` : 'đang mở'}</small></h3>
+    <div class="kv"><span>Ngân sách chuyển nhượng</span><b>${b ? money(b.transfer) + (b.date && !(S.status.live || {}).budget ? ` <small>(ghi ngày ${vnd(b.date)})</small>` : '') : '<small>chưa biết: mở game (vào Master League) để Dugout đọc</small>'}</b></div>
+    <div class="kv"><span>Ngân sách lương · quỹ lương hiện tại</span><b>${b ? money(b.salary) : '—'} · ${money(p.payroll)}/năm</b></div>
+    <div class="kv"><span>Đội hình</span><b>${p.composition.squad_size || '?'} người, còn ${p.composition.free_slots ?? '?'} chỗ</b></div>
+    <div class="kv"><span>Giá cầu thủ</span><b>${esc(p.values_source)}${p.fitted ? ' · ước tính đã hiệu chỉnh theo giá game' : ''}</b></div>
+    <div class="kv"><span>Tiền bán dự kiến · chi cho lựa chọn đáng tiền</span><b>${money(t.sell_income)} · ${money(t.first_choice_spend)}${t.balance != null ? ` · <span class="${t.balance >= 0 ? 'up' : 'down'}">còn ${money(t.balance)}</span>` : ''}</b></div>
+    <div class="hint">Mọi số lấy từ save (đội hình, hợp đồng, lương, số phút, mọi cầu thủ trên thế giới) và dự đoán của AI cho mùa sau. Bấm vào cầu thủ để xem phát triển theo tuổi.</div></div>`;
+  const out = p.leaving.length || p.let_go.length || p.renew.length ? `<div class="card" style="margin-top:14px"><h3>Hợp đồng và người ra đi</h3>
+    ${p.leaving.length ? `<h4>Ra đi chắc chắn</h4>${planRows(p.leaving, ['why'])}` : ''}
+    ${p.renew.length ? `<h4>Nên gia hạn (hợp đồng hết hè này)</h4>${planRows(p.renew, ['why', 'contract', 'salary', 'action'])}` : ''}
+    ${p.let_go.length ? `<h4>Hết hợp đồng, không cần giữ</h4>${planRows(p.let_go, ['why', 'contract', 'value', 'action'])}` : ''}</div>`
+    : `<div class="card" style="margin-top:14px"><h3>Hợp đồng và người ra đi</h3><div class="sub">Không ai hết hợp đồng, giải nghệ hay hết hạn mượn trong hè này.</div></div>`;
+  const needs = p.needs.length ? p.needs.map((g, k) => `<div class="card" style="margin-top:14px"><h3>${k + 1}. ${esc(g.label)} <small>${g.notes.map(esc).join(' · ')}</small></h3>
+      <div class="sub">Hiện có: ${g.players.slice(0, 4).map(x => `<span class="lnk" data-pid="${x.id}">${esc(x.name)}</span> ${Math.round(x.next)}`).join(', ') || 'không ai'}${g.start_avg != null ? ` · đá chính trung bình ${g.start_avg}` : ''}${g.league_top3 != null ? ` · top 3 giải ${g.league_top3}` : ''}</div>
+      <h4>${g.succession ? 'Người kế cận trẻ' : 'Mạnh nhất'}${b ? ' trong ngân sách' : ''}</h4>${planRows(g.targets.best, ['club', 'gain', 'fee', 'contract', 'tags'])}
+      <h4>Đáng tiền nhất</h4>${planRows(g.targets.value, ['club', 'gain', 'fee', 'contract', 'tags'])}</div>`).join('')
+    : '<div class="card" style="margin-top:14px"><h3>Tuyến cần tăng cường</h3><div class="sub">Đội hình mùa sau không có tuyến nào thiếu hay yếu rõ rệt.</div></div>';
+  const sell = `<div class="card" style="margin-top:14px"><h3>Nên bán / cho mượn</h3>${planRows(p.sell, ['why', 'value', 'action'])}</div>`;
+  const youth = p.promote.length ? `<div class="card" style="margin-top:14px"><h3>Đôn từ đội trẻ</h3>${planRows(p.promote, ['why', 'action'])}</div>` : '';
+  const groups = `<div class="card" style="margin-top:14px"><h3>Đội hình mùa sau theo tuyến <small>theo sơ đồ trong Game Plan</small></h3>
+    <div class="tbl"><table class="tactics"><thead><tr><th>Tuyến</th><th class="num">Đá chính</th><th class="num">TB đá chính</th><th class="num">Top 3 giải</th><th>Cầu thủ (OVR mùa sau)</th><th>Cần chú ý</th></tr></thead><tbody>
+    ${p.groups.map(g => `<tr class="${g.notes.length ? 'chg-row' : ''}"><td><b>${esc(g.label)}</b></td><td class="num">${g.starters_needed}</td><td class="num">${g.start_avg ?? '—'}</td><td class="num">${g.league_top3 ?? '—'}</td>
+      <td>${g.players.slice(0, 4).map(x => `<span class="lnk" data-pid="${x.id}">${esc(x.name)}</span> <small>${Math.round(x.next)}</small>`).join(', ')}</td><td>${g.notes.map(esc).join('; ') || '<small>ổn</small>'}</td></tr>`).join('')}
+    </tbody></table></div></div>`;
+  return head + needs + sell + out + youth + groups;
+}
+function squadNeeds(sc) {
+  const sq = S.bundle.squad;
+  const groups = [['Thủ môn', ['GK'], 2], ['Trung vệ', ['CB'], 4], ['Hậu vệ biên', ['LB', 'RB'], 4], ['Tiền vệ phòng ngự', ['DMF'], 2],
+    ['Tiền vệ trung tâm', ['CMF', 'LMF', 'RMF'], 3], ['Tiền vệ tấn công', ['AMF'], 2], ['Tiền đạo cánh', ['LWF', 'RWF'], 4], ['Tiền đạo', ['CF', 'SS'], 3]];
+  const rows = groups.map(([label, pos, need]) => {
+    const ps = sq.filter(p => pos.includes(p.pos)).sort((a, b) => b.ovr - a.ovr);
+    const best = ps[0];
+    const notes = [];
+    if (ps.length < need) notes.push(`thiếu ${need - ps.length} người`);
+    if (best && best.age >= 31) notes.push(`người tốt nhất đã ${best.age} tuổi: cần người kế cận`);
+    const exp = ps.filter(p => p.contract && p.contract[0] <= (new Date(S.bundle.date).getMonth() < 6 ? new Date(S.bundle.date).getFullYear() : new Date(S.bundle.date).getFullYear() + 1));
+    if (exp.length) notes.push(`${exp.length} người hết hợp đồng cuối mùa`);
+    if (ps.length && ps.filter(p => !p.inj).length < Math.min(need, ps.length)) notes.push('đang có người chấn thương');
+    return `<tr class="${notes.length ? 'chg-row' : ''}"><td><b>${label}</b></td><td class="num">${ps.length}/${need}</td>
+      <td>${ps.slice(0, 4).map(p => `<span data-pid="${p.id}" class="lnk">${esc(p.name)}</span> <small>${p.ovr}${p.peak > p.ovr ? '→' + p.peak : ''} · ${p.age}t</small>`).join(', ')}</td>
+      <td>${notes.map(esc).join('; ') || '<small>ổn</small>'}</td>
+      <td>${notes.length ? `<button class="mini" data-needpos="${pos[0]}">Tìm ${pos[0]}</button>` : ''}</td></tr>`;
+  }).join('');
+  return `<div class="hint">Số cầu thủ theo vị trí so với mức tối thiểu hợp lý cho một mùa nhiều giải.${sc ? ` Đội đang có ${sc.squad_size} cầu thủ, còn ${sc.free_slots} chỗ trống.` : ''}</div>
+    <div class="tbl"><table class="tactics"><thead><tr><th>Tuyến</th><th class="num">Số người</th><th>Tốt nhất (OVR → ngưỡng · tuổi)</th><th>Cần chú ý</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+async function runSearch(form) {
+  const q = Object.fromEntries(new FormData(form).entries());
+  S.mq = q;
+  const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v !== '')).toString();
+  $('#market-result').innerHTML = '<div class="empty">Đang tìm…</div>';
+  S.marketResult = await api('/api/search?' + qs);
+  $('#market-result').innerHTML = playerRows(S.marketResult.players, {team: true, tab: 'age'});
+  $('#market-count').textContent = `${S.marketResult.total} cầu thủ phù hợp (hiện ${S.marketResult.players.length} đầu tiên).`;
+}
+
+// ------------------------------------------------------------------ youth
+function renderYouth() {
+  const y = S.bundle.youth;
+  const tabs = [['youth', `Đội trẻ của bạn (${y.youth.length})`], ['regens', `Regen toàn thế giới (${y.regens.length})`]];
+  const body = S.youthTab === 'youth' ? `<div class="hint">Đội trẻ đọc từ save. Ngưỡng AI giúp chọn ai nên đôn lên đội một.</div>${playerRows(y.youth)}`
+    : `<div class="hint">Cầu thủ giải nghệ quay lại ở tuổi 16 với cùng tên và gương mặt, chỉ số mới do game tạo. AI dự đoán lại hoàn toàn từ chỉ số mới, không dùng dữ liệu của sự nghiệp cũ.</div>${playerRows(y.regens, {team: true, tab: 'age'})}`;
+  $('#page-youth').innerHTML = `<div class="tabs" id="y-tabs">${tabs.map(([k, l]) => `<button data-t="${k}" class="${S.youthTab === k ? 'active' : ''}">${l}</button>`).join('')}</div>${body}`;
+}
+
+// ------------------------------------------------------------------ AI
+function renderAi() {
+  const a = S.bundle.ai, r = a.report || {};
+  const pct = v => v == null ? '—' : (v * 100).toFixed(1).replace('.', ',') + '%';
+  const posAcc = r.positions ? Object.values(r.positions).reduce((s, v) => s + v.auc, 0) / Object.keys(r.positions).length : null;
+  $('#page-ai').innerHTML = `<div class="grid g4">
+    <div class="card"><h3>Dữ liệu đã ghi</h3><div class="stat">${a.snapshots}</div><div class="sub">lần lưu game (mỗi ngày trong game một bản)${a.first_snapshot ? `, từ ${vnDate(a.first_snapshot)}` : ''}</div></div>
+    <div class="card"><h3>Đã học tốc độ riêng</h3><div class="stat">${a.learned.toLocaleString('vi')}</div><div class="sub">trên ${a.players.toLocaleString('vi')} cầu thủ</div></div>
+    <div class="card"><h3>Regen</h3><div class="stat">${a.regens}</div><div class="sub">cầu thủ tái sinh, dự đoán lại từ đầu</div></div>
+    <div class="card"><h3>Huấn luyện lúc</h3><div class="stat" style="font-size:16px">${esc((r.trained_at || '').replace('T', ' '))}</div></div></div>
+    <div class="grid g2" style="margin-top:14px">
+      <div class="card"><h3>Kiểm tra dữ liệu <span class="sub" id="ai-health-at"></span></h3><div class="checks" id="ai-health"></div></div>
+      <div class="card"><h3>Sao lưu &amp; dữ liệu giữ cho AI</h3><div id="ai-backup"></div>
+        <div class="btns"><button class="primary" id="btn-backup">Sao lưu ngay</button><button id="btn-open-backup">Mở thư mục sao lưu</button></div>
+        <div class="sub" style="margin-top:8px">Tự sao lưu mỗi lần bạn lưu game (sau khi kiểm tra save đọc đúng). Giữ mọi bản của 14 ngày gần nhất trong game,
+        cũ hơn giữ bản cuối mỗi tháng (khoảng 250 MB mỗi mùa). Cách khôi phục: file DOC TOI.txt trong thư mục sao lưu.</div></div></div>
+    <div class="grid g2" style="margin-top:14px"><div class="card"><h3>Các mô hình</h3>
+      <div class="kv"><span>OVR theo vị trí (sai số trung bình)</span><b>${r.ovr ? (Object.values(r.ovr).reduce((s, v) => s + v.mae * v.samples, 0) / Object.values(r.ovr).reduce((s, v) => s + v.samples, 0)).toFixed(2) : '—'} điểm</b></div>
+      <div class="kv"><span>Hợp vị trí (AUC trung bình)</span><b>${posAcc ? posAcc.toFixed(3) : '—'}</b></div>
+      <div class="kv"><span>Phong cách chơi: đúng ngay / trong 3 gợi ý</span><b>${pct(r.styles?.top1)} / ${pct(r.styles?.top3)}</b></div>
+      <div class="kv"><span>41 kỹ năng (AUC trung bình)</span><b>${r.skills?.mean_auc ? r.skills.mean_auc.toFixed(3) : '—'}</b></div>
+      <div class="kv"><span>Phát triển: sai số chỉ số / nếu coi như không đổi</span><b>${r.growth ? r.growth.mae.toFixed(2) + ' / ' + r.growth.mae_no_change.toFixed(2) : '—'}</b></div>
+      <div class="kv"><span>Cặp dữ liệu phát triển</span><b>${r.growth ? r.growth.pairs.toLocaleString('vi') + ` (xa nhất ${r.growth.max_years.toFixed(1)} năm)` : '—'}</b></div>
+      <div style="margin-top:12px"><button class="primary" id="btn-train">Huấn luyện lại AI</button>
+      <span class="sub"> Nên chạy khi sang mùa mới: AI học thêm từ dòng thời gian các lần lưu game.</span></div></div>
+    <div class="card"><h3>AI hoạt động thế nào</h3><div class="sub" style="line-height:1.7">
+      • Mỗi lần bạn lưu game (game vẫn mở), Dugout đọc lại save trong vài giây và ghi lại chỉ số của mọi cầu thủ theo ngày trong game.<br>
+      • Dự đoán phát triển dùng đường cong theo tuổi học từ database và các save trên máy, rồi cộng thêm <b>tốc độ riêng</b> của từng cầu thủ học được từ dòng thời gian đó. Cầu thủ lên nhanh hơn dự đoán thì ngưỡng được nâng lên, và ngược lại.<br>
+      • Phong cách chơi và kỹ năng gợi ý học từ 27 nghìn cầu thủ trong database: cầu thủ có chỉ số như vậy ở vị trí đang đá thường dùng phong cách và kỹ năng nào.<br>
+      • Regen (giải nghệ rồi quay lại ở tuổi 16, cùng tên) được nhận ra khi tuổi bị lùi lại; dự đoán tính lại từ chỉ số mới.</div></div></div>
+    ${matchAiCard(a)}
+    <h3 style="margin-top:18px">Nhật ký</h3><pre class="log" id="ai-log"></pre>`;
+  S.aiSig = '';
+  renderAiLog();
+  renderAiStatus();
+}
+function renderAiStatus() {
+  const box = $('#ai-health'), bk = $('#ai-backup');
+  if (!box || !S.status) return;
+  const h = S.status.health || {}, b = S.status.backup || {}, kept = (S.bundle.ai || {}).kept || {};
+  const sig = JSON.stringify([h, b, kept]);
+  if (sig === S.aiSig) return;
+  S.aiSig = sig;
+  const icon = {ok: '✓', warn: '!', error: '✗', info: 'i'};
+  const rows = [...(h.files || []).map(f => ({level: 'info', text: `${f.text} (${f.when})`})), ...(h.items || [])];
+  box.innerHTML = rows.length ? rows.map(i => `<div class="row ${i.level}"><span class="ic">${icon[i.level] || '·'}</span><span>${esc(i.text)}</span></div>`).join('')
+    : '<div class="sub">Chưa đọc save lần nào.</div>';
+  $('#ai-health-at').textContent = h.at ? `lần đọc lúc ${h.at}` : '';
+  const n = v => (v || 0).toLocaleString('vi');
+  const world = Object.entries(kept.world || {});
+  bk.innerHTML = `<div class="kv"><span style="white-space:nowrap">Thư mục</span><span class="path">${esc(b.dir || b.root || '—')}</span></div>
+    <div class="kv"><span>Bản save đã sao lưu</span><b>${n(b.saves)}${b.first_date ? ` <small>(${vnDate(b.first_date)} → ${vnDate(b.last_date)})</small>` : ''}</b></div>
+    <div class="kv"><span>Bản dữ liệu Dugout (.zip)</span><b>${n(b.zips)}</b></div>
+    ${b.unverified ? `<div class="kv"><span>Save không qua kiểm tra (giữ để xem lại)</span><b>${b.unverified}</b></div>` : ''}
+    <div class="kv"><span>Dung lượng · lần gần nhất</span><b>${b.mb != null ? String(b.mb).replace('.', ',') + ' MB' : '—'} · ${esc(b.last || 'chưa có')}</b></div>
+    ${b.error ? `<div class="kv"><span>Lỗi lần sao lưu trước</span><span class="out">${esc(b.error)}</span></div>` : ''}
+    <h3 style="margin:12px 0 6px">Dữ liệu đang giữ cho AI</h3>
+    <div class="kv"><span>Chỉ số mọi cầu thủ qua các lần lưu</span><b>${n(S.bundle.ai.snapshots)} ngày</b></div>
+    <div class="kv"><span>Mọi trận đã đá trên thế giới (cả đội hình), theo mùa</span><b>${world.length ? world.map(([k, v]) => `${esc(k)}: ${n(v)}`).join(' · ') : '—'}</b></div>
+    <div class="kv"><span>Trận của bạn (đội hình, điểm, bàn thắng)</span><b>${n(kept.matches)}</b></div>
+    <div class="kv"><span>Game Plan hai đội trước trận của bạn</span><b>${n(kept.tactics)} trận</b></div>
+    <div class="kv"><span>Mũi tên phong độ và chấn thương</span><b>${n(kept.conditions)} ngày</b></div>
+    <div class="kv"><span>Giá trị cầu thủ (đọc khi game mở)</span><b>${n(kept.market)} ngày</b></div>
+    ${(S.status.edits || []).length ? `<h3 style="margin:12px 0 6px">Các lần sửa save</h3>${S.status.edits.map(e => `<div class="kv"><span>${esc(e.time.replace('T', ' '))} · ${esc(e.label)}${e.undone ? ' <small>(đã hoàn tác)</small>' : ''}</span>${e.undone ? '' : `<button class="mini" data-undo="${esc(e.id)}">Hoàn tác</button>`}</div>`).join('')}` : ''}`;
+}
+function matchAiCard(a) {
+  const m = a.match_model, P = a.predictions || {rows: [], cond: []};
+  const pc = v => (v * 100).toFixed(1).replace('.', ',') + '%';
+  return `<div class="grid g2" style="margin-top:14px"><div class="card"><h3>Dự đoán trận đấu</h3>
+    ${m ? `<div class="kv"><span>Học từ</span><b>${m.matches.toLocaleString('vi')} trận đã đá (mọi giải trên thế giới)${m.history ? `, trong đó ${m.history.toLocaleString('vi')} trận các mùa trước Dugout đã lưu` : ''}</b></div>
+      <div class="kv"><span>Kiểm tra trên ${m.test} trận gần nhất: đoán đúng kết quả</span><b>${pc(m.accuracy)}</b></div>
+      <div class="kv"><span>Sai số log (thấp hơn là tốt) / nếu chỉ đoán theo tần suất</span><b>${m.logloss} / ${m.baseline_logloss}</b></div>
+      <div class="kv"><span>Mỗi điểm OVR đội hình chênh lệch</span><b>+${(m.per_ovr * 100).toFixed(1).replace('.', ',')}% bàn thắng kỳ vọng</b></div>`
+      : `<div class="sub">Cần ít nhất 300 trận đã đá (hiện ${a.match_model_n || 0}).</div>`}
+    <div class="kv"><span>Game Plan đọc được</span><b>${a.gameplans ?? '—'} CLB</b></div>
+    <div class="kv"><span>Mũi tên phong độ đọc được</span><b>${(a.conditions || 0).toLocaleString('vi')} cầu thủ</b></div>
+    <div class="kv"><span>Đọc trực tiếp từ game (ngân sách, giá trị cầu thủ)</span><b>${esc(((S.status || {}).live || {}).text || ((S.status || {}).live || {}).ai_text || '—')}</b></div>
+    <div class="sub" style="margin-top:8px">Đầu vào: OVR của 11 người đá chính ở đúng vị trí (trừ điểm nếu hạng vị trí B/C), mũi tên phong độ (tạm tính ±1,5 OVR mỗi bậc), sân nhà, mức ghi bàn của giải. Mô hình học lại mỗi khi có kết quả mới.</div></div>
+    <div class="card"><h3>Đối chiếu sau trận <span class="sub">${P.n ? `đúng ${P.hits}/${P.n}` : ''}</span></h3>
+    ${P.rows.length ? P.rows.slice(0, 12).map(r => `<div class="kv"><span>${r.hit ? '✓' : '✗'} ${vnDate(r.date)} ${r.venue === 'home' ? 'vs' : '@'} ${esc(r.opp)}</span>
+      <span>AI: T${r.pred.w} H${r.pred.d} B${r.pred.l} · ${res(r.result)} ${r.score[0]}–${r.score[1]}</span></div>`).join('')
+      : '<div class="sub">Dugout lưu dự đoán trước mỗi trận và đối chiếu khi bạn lưu game sau trận.</div>'}
+    ${P.cond.length ? `<h3 style="margin-top:12px">Điểm trung bình theo mũi tên phong độ (các trận của bạn)</h3>${P.cond.map(c => `<div class="kv"><span>${arrow('EDCBA'.indexOf(c.arrow))} ${c.arrow}</span><b>${c.avg} <small>(${c.n} lượt)</small></b></div>`).join('')}` : ''}</div></div>`;
+}
+function renderAiLog() {
+  const el = $('#ai-log');
+  if (el && S.status) el.textContent = (S.status.log || []).join('\n');
+}
+
+// ------------------------------------------------------------------ player drawer
+async function openPlayer(pid, tab, refresh) {
+  pid = Number(pid);
+  S.drawer = pid;
+  if (tab) S.drawerTab = tab;
+  else if (!refresh) S.drawerTab = 'overview';
+  $('#drawer').classList.remove('hidden');
+  $('#scrim').classList.remove('hidden');
+  let d = S.bundle.details[pid];
+  if (!d) {
+    if (!refresh) $('#drawer-body').innerHTML = '<div class="empty">Đang tải…</div>';
+    try { d = await api('/api/player/' + pid); } catch (e) { $('#drawer-body').innerHTML = '<div class="empty">Không tìm thấy cầu thủ.</div>'; return; }
+  }
+  if (S.drawer !== pid) return;
+  S.cur = d;
+  drawDrawer();
+}
+function closeDrawer() {
+  S.drawer = null;
+  $('#drawer').classList.add('hidden');
+  $('#scrim').classList.add('hidden');
+}
+function drawDrawer() {
+  const d = S.cur;
+  const nAdv = d.advice ? d.advice.count : 0;
+  const nTr = d.advice ? (d.advice.training || []).length : 0;
+  const tabs = [['overview', 'Tổng quan'], ['dev', `💡 Phát triển${nAdv ? ` (${nAdv})` : ''}${nTr ? ` · ⏳ ${nTr}` : ''}`], ['stats', 'Chỉ số'], ['age', 'Theo tuổi'],
+    ['matches', `Trận đấu${d.matches.length ? ` (${d.matches.length})` : ''}`], ['similar', 'Tương tự']];
+  if (d.editable) tabs.push(['edit', '✏ Sửa save']);
+  const body = ({overview: dOverview, dev: dDev, stats: dStats, age: dAge, matches: dMatches, similar: dSimilar, edit: dEdit}[S.drawerTab] || dOverview)(d);
+  $('#drawer-body').innerHTML = `<div class="phead">${face(d.id, 'lg')}<div><h2>${esc(d.name)} ${tags(d)}</h2>
+      <div class="sub">${d.pos} · ${POS_VI[d.pos]}${d.played && d.played !== d.pos ? ` (đang đá ${d.played})` : ''} · ${d.age} tuổi · ${esc(d.nation)} · ${d.height} cm · chân ${d.foot.toLowerCase()}</div>
+      <div class="sub" style="margin-top:4px">${crest(d.team, d.team_name)} ${esc(d.team_name)}${d.shirt ? ` · số ${d.shirt}` : ''}${d.role ? ' · ' + esc(d.role) : ''}${d.national ? ' · ĐTQG ' + esc(d.national) : ''}</div>
+      <div class="pillrow" style="margin-top:6px"><span class="pill">${esc(d.style_label || 'Không có phong cách')}</span>${d.style_start ? `<span class="pill" title="Phong cách ở đầu sự nghiệp">trước: ${esc(d.style_start)}</span>` : ''}</div></div>
+      <div class="big">${d.cond >= 0 ? `<div>Phong độ<b style="font-size:22px">${arrow(d.cond)}</b><small>${ARROW_VI[d.cond]}</small></div>` : ''}<div>OVR${ovr(d.ovr)}</div><div>Ngưỡng AI${ovr(d.peak)}<small>${d.peak_low}–${d.peak_high}</small></div>
+      <div>Chạm ngưỡng<b style="font-size:20px;color:var(--text)">${d.reach_age <= d.age ? 'đã chạm' : d.reach_age + ' tuổi'}</b></div></div></div>
+    <div class="tabs" id="d-tabs">${tabs.map(([k, l]) => `<button data-t="${k}" class="${S.drawerTab === k ? 'active' : ''}">${l}</button>`).join('')}</div>${body}`;
+}
+function dOverview(d) {
+  const pace = d.vs_pred != null ? `<div class="kv"><span>OVR so với dự đoán ban đầu (từ ${vnDate(d.vs_pred_since)})</span>
+    <b class="${d.pace >= 0 ? 'up' : 'down'}">${d.vs_pred > 0 ? '+' : ''}${d.vs_pred} <small>(cùng tuổi: ${d.vs_pred_cohort > 0 ? '+' : ''}${d.vs_pred_cohort})</small></b></div>` : '';
+  const season = d.apps != null ? `<div class="kv"><span>Mùa này</span><b>${d.apps} trận${d.starts != null ? ` (${d.starts} đá chính)` : ''} · ${d.goals || 0} bàn · ${d.assists || 0} kiến tạo${d.rating ? ' · điểm ' + (d.rating10 ?? d.rating).toFixed(2) + '/10' : ''}${d.minutes ? ` · ${d.minutes} phút` : ''}</b></div>` : '';
+  const ce = d.c_end ? String(d.c_end) : '';
+  const contract = d.contract ? `<div class="kv"><span>Hợp đồng đến</span><b>${d.contract[2]}/${d.contract[1]}/${d.contract[0]}</b></div>`
+    : ce ? `<div class="kv"><span>Hợp đồng đến</span><b>${Number(ce.slice(6))}/${Number(ce.slice(4, 6))}/${ce.slice(0, 4)}</b></div>` : '';
+  const salary = (d.salary || d.wage) ? `<div class="kv"><span>Lương năm</span><b>${money(d.salary || d.wage)}</b></div>` : '';
+  const mv = S.live && S.live.values && S.live.values[d.id] ? `<div class="kv"><span>Giá trị chuyển nhượng <small>(đọc trực tiếp từ game)</small></span><b>${money(S.live.values[d.id])}</b></div>` : '';
+  const wf = d.wf && d.wf[1] ? `<div class="kv"><span>Chân không thuận: tần suất / độ chính xác</span><b>${d.wf[0]}/4 · ${d.wf[1]}/4</b></div>` : '';
+  const ob = d.observed || {};
+  const obs = ob.n ? `<div class="kv"><span>Phong độ Dugout ghi lại (${ob.n} lần lưu từ ${vnDate(ob.first)})</span><b>${ob.stability ? esc(ob.stability) + ' · ' : ''}${ob.good} lần A/B · ${ob.bad} lần D/E</b></div>
+    <div class="kv"><span>Chấn thương Dugout ghi lại</span><b>${ob.injuries ? `${ob.injuries} lần, lâu nhất ${ob.worst_days} ngày` : 'chưa lần nào'}</b></div>` : '';
+  const clause = d.clause ? `<div class="kv"><span>Phí giải phóng</span><b>${money(d.clause)}</b></div>` : '';
+  return `<div class="card"><h3>Phát triển: đã qua và dự đoán</h3>${growthChart(d)}
+      <div class="legend"><span><i style="background:#38bdf8"></i>Đã ghi lại từ các lần lưu game</span><span><i style="background:#22c55e"></i>AI dự đoán</span>
+      <span><i style="background:rgba(34,197,94,.25);height:8px"></i>Khoảng 80%</span>${d.pred_history.length > 1 ? '<span><i style="background:#eab308"></i>Ngưỡng dự đoán qua các lần lưu</span>' : ''}</div></div>
+    <div class="grid g2" style="margin-top:14px"><div class="card"><h3>Tóm tắt</h3>
+      <div class="kv"><span>Xu hướng</span><b>${trendCell(d)}</b></div>
+      <div class="kv"><span>Ngưỡng dự đoán</span><b>${d.peak} ở ${d.peak_age} tuổi <small>(80%: ${d.peak_low}–${d.peak_high})</small></b></div>
+      <div class="kv"><span>Tốc độ riêng AI học được</span><b>${d.learned ? `<span class="${d.pace_ovr >= 0 ? 'up' : 'down'}">${d.pace_ovr > 0 ? '+' : ''}${d.pace_ovr} OVR/năm</span> <small>so với cầu thủ bình thường cùng tuổi</small>` : 'chưa đủ dữ liệu'}</b></div>
+      ${pace}${season}${contract}${salary}${mv}${clause}${wf}${obs}
+      <div class="kv"><span>Kỹ năng</span><b>${d.skills.length}</b></div></div>
+      <div class="card"><h3>Độ hợp 13 vị trí <small>(chữ: hạng trong game · số: độ hợp AI)</small></h3>${posMap(d)}</div></div>`;
+}
+// how well a position suits a player (same rule as the in-game page)
+const VERDICT = ['Không hợp', 'Tạm được', 'Hợp', 'Rất hợp'];
+function posVerdict(fit, delta) {
+  return fit >= 80 && delta >= -1 ? 3 : fit >= 65 && delta >= -3 ? 2 : fit >= 50 && delta >= -6 ? 1 : 0;
+}
+function gameOpen() { return !!(S.status && S.status.save && S.status.save.game_on); }
+function dEdit(d) {
+  const cur = d.reg_pos, grades = Object.fromEntries(d.positions.map(p => [p.pos, p]));
+  const base = cur ? grades[cur].ovr : 0, game = gameOpen();
+  const opts = POS.map(p => {
+    const g = grades[p], v = posVerdict(g.fit, g.ovr - base);
+    return `<option value="${POS.indexOf(p)}" ${p === cur ? 'selected' : ''}>${p} · ${esc(POS_VI[p])} · hạng ${g.grade} · OVR ${g.ovr}${p === cur ? ' ✓ hiện tại' : ` · ${VERDICT[v]} (phù hợp ${g.fit})`}</option>`;
+  }).join('');
+  const ig = (S.status && S.status.ingame) || {};
+  setTimeout(loadEditHistory, 0);
+  setTimeout(loadEditInfo, 0);
+  const how = game
+    ? `<b>Game đang mở:</b> Dugout đổi thẳng trong game (bộ nhớ game), không cần thoát. Thay đổi vào save khi game lưu (lưu tay hoặc Tự động lưu); save hiện tại được sao lưu trước. ${['error', 'partial'].includes(ig.memory) ? `<br><span class="down">${esc(ig.message || '')}</span>` : ''}
+       <br>Trong game cũng có trang này: Space mở overlay Sider, phím 1 tới trang DUGOUT.`
+    : `Game không có màn hình này nên Dugout sửa thẳng vào save: chỉ đổi đúng vị trí đăng ký và hạng vị trí của cầu thủ này, kiểm tra lại toàn bộ file, sao lưu save gốc trước khi ghi, hoàn tác được.
+       Game đang tắt: sửa xong mở game và tải save như bình thường (hoặc mở game rồi đổi ngay trong game).`;
+  return `<div class="card"><h3>Đổi vị trí đăng ký <small>${game ? 'đổi ngay trong game đang mở' : 'sửa trực tiếp vào save Master League'}</small></h3>
+      <div class="hint">${how}</div>
+      <div class="kv"><span>Vị trí đăng ký hiện tại</span><b>${cur ? `${cur} · ${esc(POS_VI[cur])} (hạng ${grades[cur].grade})` : '—'}</b></div>
+      <div class="kv"><span>Vị trí</span><select id="ed-pos">${opts}</select></div>
+      <label class="kv" style="cursor:pointer"><span><input type="checkbox" id="ed-grade" checked> Khi đăng ký: đặt hạng A ở vị trí mới (vị trí chính luôn là hạng A)</span></label>
+      <div class="btns"><button class="primary" id="ed-apply" data-pid="${d.id}">${game ? 'Đăng ký làm vị trí chính (trong game)' : 'Đăng ký làm vị trí chính (vào save)'}</button>
+        <button id="ed-learn" data-pid="${d.id}">Học ngay (lên 1 hạng)</button>
+        <button id="ed-train" data-pid="${d.id}">Tập theo thời gian</button></div>
+      <div class="sub" style="margin-top:6px">Tập theo thời gian: khoảng 6 tuần trong game cho mỗi hạng (C → B → A), mỗi 90 phút đá ở vị trí đó bớt 1 tuần, cầu thủ trẻ học nhanh hơn. Xong mỗi hạng, Dugout tự nâng hạng và báo trong Hộp thư.</div>
+      <div id="ed-train-box"></div>
+      <div id="ed-msg" class="sub" style="margin-top:8px"></div></div>
+    <div class="card" style="margin-top:14px"><h3>Phong cách chơi</h3><div id="ed-style-box" class="sub">Đang tải…</div></div>
+    <div class="card" style="margin-top:14px"><h3>Chân thuận</h3><div id="ed-foot-box" class="sub">Đang tải…</div></div>
+    <div class="card" style="margin-top:14px"><h3>Các lần sửa save</h3><div id="ed-hist" class="sub">Đang tải…</div></div>`;
+}
+async function loadEditInfo() {
+  const pid = S.cur && S.cur.id;
+  if (!pid || !$('#ed-style-box')) return;
+  let x;
+  try { x = await api('/api/edit-info/' + pid); } catch (e) { return; }
+  if (!S.cur || S.cur.id !== pid) return;
+  const game = x.game, ig = x.ingame || {};
+  // training in progress
+  const tb = $('#ed-train-box');
+  if (tb) tb.innerHTML = x.training.length ? `<h3 style="margin:12px 0 6px">Đang tập</h3>${x.training.map(t => `<div class="kv"><span>${t.pos} · ${esc(POS_VI[t.pos])}: hạng ${t.grade} → ${t.next}
+      <div class="bar" style="margin-top:4px;max-width:360px"><span style="width:${t.pct}%;background:var(--accent)"></span></div><small>${t.pct}% · ${t.days} ngày tập, ${t.minutes} phút đá ở ${t.pos} · còn khoảng ${t.eta_days} ngày (từ ${esc(t.started)})</small></span>
+      <button class="mini" data-train-stop="${t.pos_idx}">Dừng</button></div>`).join('')}`
+    + (x.done.length ? `<div class="sub" style="margin-top:6px">Đã tập xong: ${x.done.map(p => `${p.pos} (${p.steps.map(st => `${st.grade} ngày ${st.date}`).join(', ')})`).join(' · ')}</div>` : '') : '';
+  // playing style
+  const styleOk = game ? !!ig.style : true;
+  const cur = x.styles.find(o => o.current);
+  $('#ed-style-box').innerHTML = `<div class="kv"><span>Đang dùng</span><b>${esc(cur ? cur.label : '—')}</b></div>
+    <div class="kv"><span>Phong cách mới</span><select id="ed-style">${x.styles.map(o => `<option value="${o.id}" ${o.current ? 'selected' : ''}>${esc(o.label)}${o.id ? ` · phù hợp ${o.fit}%` : ''}${o.current ? ' ✓ đang dùng' : ''}${o.sugg ? ' · gợi ý' : ''}</option>`).join('')}</select></div>
+    <div class="btns"><button class="primary" id="ed-style-apply" data-pid="${pid}" ${styleOk ? '' : 'disabled'}>${game ? 'Đổi phong cách (trong game)' : 'Đổi phong cách (vào save)'}</button></div>
+    <div class="sub" style="margin-top:6px">Chỉ các phong cách dùng được ở vị trí đăng ký hiện tại; "phù hợp" do AI tính từ chỉ số, thể hình và chân thuận. Game cũng có tập phong cách (Tập luyện cá nhân) nếu bạn muốn theo cách của game.${game && !ig.style ? '<br><span class="down">Dugout chưa xác định chắc chỗ lưu phong cách trong bộ nhớ game.</span>' : ''}</div>
+    <div id="ed-style-msg" class="sub" style="margin-top:6px"></div>`;
+  // preferred foot
+  const f = x.foot, two = f.wf >= 4, sw = f.swap;
+  const FOOTS = ['Phải', 'Trái'];
+  $('#ed-foot-box').innerHTML = `<div class="kv"><span>Chân thuận · độ chính xác chân còn lại</span><b>${FOOTS[f.left]} · ${f.wf || '?'}/4${two ? ' (thuận hai chân)' : ''}</b></div>
+    ${sw ? `<div class="kv"><span>Dugout đã đổi (từ ${esc(sw.time.replace('T', ' '))})</span><b>${FOOTS[sw.orig_left]} → ${FOOTS[sw.left]}</b></div>` : ''}
+    <div class="sub" style="margin-top:6px">Chân thuận không nằm trong save (game lấy từ database gốc). Dugout đổi nó trong bộ nhớ game và <b>tự áp lại mỗi lần bạn mở game</b> (cần Dugout đang chạy); chỉ cho cầu thủ thuận hai chân (4/4), để cầu thủ không yếu đi.</div>
+    ${two || sw ? `<div class="btns"><button id="ed-foot" data-pid="${pid}" ${game || sw ? '' : 'disabled'}>${sw ? 'Trả lại chân thuận gốc' : `Đổi sang chân ${FOOTS[1 - f.left].toLowerCase()}`}</button></div>
+      ${!game && !sw ? '<div class="sub">Mở game (vào Master League) để đổi.</div>' : ''}` : ''}
+    <div id="ed-foot-msg" class="sub" style="margin-top:6px"></div>`;
+}
+async function loadEditHistory() {
+  const box = $('#ed-hist');
+  if (!box) return;
+  let list = [];
+  try { list = await api('/api/edits'); } catch (e) {}
+  const pid = S.cur && S.cur.id;
+  const mine = list.filter(e => (e.writes || []).some(w => w.player_id === pid));
+  box.innerHTML = mine.length ? mine.map(e => `<div class="kv"><span>${esc(e.time.replace('T', ' '))} · ${esc(e.label)}${e.undone ? ' <small>(đã hoàn tác)</small>' : editState(e)}</span>
+      ${e.undone ? '' : `<button class="mini" data-undo="${esc(e.id)}">Hoàn tác</button>`}</div>`).join('')
+    : 'Chưa sửa cầu thủ này lần nào.';
+}
+function editState(e) {
+  if (e.mode !== 'game') return '';
+  if (e.persisted === 'replaced') return ' <small>(đã được lần sửa sau thay)</small>';
+  return e.persisted ? ' <small class="up">(game đã lưu vào save)</small>' : ' <small class="pending-save">(đổi trong game, chờ game lưu)</small>';
+}
+function posMap(d) {
+  const spots = d.positions.map(p => {
+    const [x, y] = SPOT[p.pos];
+    const c = p.fit >= 80 ? '#16a34a' : p.fit >= 60 ? '#65a30d' : p.fit >= 40 ? '#a16207' : p.fit >= 20 ? '#7c2d12' : '#1f2937';
+    return `<div class="pp" style="left:${x}%;top:${y}%" title="${POS_VI[p.pos]}: hạng ${p.grade}, độ hợp ${p.fit}, OVR ${p.ovr}">
+      <span class="spot" style="background:${c};${p.grade === 'A' ? 'outline:2px solid #fff' : p.grade === 'B' ? 'outline:1px dashed #fff' : ''}">${p.pos}</span>
+      <span class="p">${p.grade} · ${p.ovr}</span></div>`;
+  }).join('');
+  return `<div class="pitch posmap" style="max-width:300px">${spots}</div>`;
+}
+function growthChart(d) {
+  const W = 760, H = 250, L = 34, R = 12, T = 12, B = 26;
+  const now = new Date(S.bundle.date + 'T00:00:00');
+  const hist = (d.history || []).map(h => ({t: (new Date(h.date + 'T00:00:00') - now) / 3.15576e10, v: h.ovr}));
+  const proj = d.projection.filter(p => p.age - d.age <= 14);
+  const t0 = Math.min(0, ...hist.map(h => h.t)), t1 = Math.max(1, ...proj.map(p => p.age - d.age));
+  const vals = [...hist.map(h => h.v), ...proj.flatMap(p => [p.low, p.high])];
+  const v0 = Math.max(40, Math.floor((Math.min(...vals) - 2) / 5) * 5), v1 = Math.min(100, Math.ceil((Math.max(...vals) + 2) / 5) * 5);
+  const X = t => L + (t - t0) / (t1 - t0) * (W - L - R), Y = v => T + (v1 - v) / (v1 - v0) * (H - T - B);
+  let g = '';
+  for (let v = v0; v <= v1; v += 5) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#243041"/><text x="${L - 6}" y="${Y(v) + 4}" fill="#8a97a8" font-size="11" text-anchor="end">${v}</text>`;
+  const step = (t1 - t0) > 10 ? 2 : 1;
+  for (let a = Math.ceil(d.age + t0); a <= d.age + t1; a += step) g += `<text x="${X(a - d.age)}" y="${H - 8}" fill="#8a97a8" font-size="11" text-anchor="middle">${a}t</text>`;
+  g += `<line x1="${X(0)}" x2="${X(0)}" y1="${T}" y2="${H - B}" stroke="#5d6a7b" stroke-dasharray="3 3"/><text x="${X(0) + 4}" y="${T + 10}" fill="#8a97a8" font-size="10">hôm nay</text>`;
+  const band = proj.map(p => `${X(p.age - d.age)},${Y(p.high)}`).join(' ') + ' ' + proj.slice().reverse().map(p => `${X(p.age - d.age)},${Y(p.low)}`).join(' ');
+  g += `<polygon points="${band}" fill="rgba(34,197,94,.18)"/>`;
+  g += `<polyline points="${proj.map(p => `${X(p.age - d.age)},${Y(p.ovr)}`).join(' ')}" fill="none" stroke="#22c55e" stroke-width="2.5"/>`;
+  const pk = proj.reduce((a, b) => b.ovr > a.ovr ? b : a, proj[0]);
+  if (pk) g += `<circle cx="${X(pk.age - d.age)}" cy="${Y(pk.ovr)}" r="4" fill="#eab308"/><text x="${X(pk.age - d.age)}" y="${Y(pk.ovr) - 8}" fill="#eab308" font-size="11" text-anchor="middle">đỉnh ${Math.round(pk.ovr)}</text>`;
+  if (hist.length) {
+    g += `<polyline points="${hist.map(h => `${X(h.t)},${Y(h.v)}`).join(' ')} ${X(0)},${Y(d.ovr)}" fill="none" stroke="#38bdf8" stroke-width="2"/>`;
+    g += hist.map(h => `<circle cx="${X(h.t)}" cy="${Y(h.v)}" r="3" fill="#38bdf8"/>`).join('');
+  }
+  const ph = (d.pred_history || []).map(p => ({t: (new Date(p[0] + 'T00:00:00') - now) / 3.15576e10, v: p[2]})).filter(p => p.t >= t0);
+  if (ph.length > 1) g += `<polyline points="${ph.map(p => `${X(p.t)},${Y(p.v)}`).join(' ')}" fill="none" stroke="#eab308" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${g}</svg>`;
+}
+function devTraining(a) {
+  const list = a.training || [];
+  if (!list.length) return '';
+  const src = t => t.source === 'dugout' ? 'Dugout (tập theo thời gian)' : 'trong game';
+  return `<div class="sugg training"><h3>⏳ Đang huấn luyện <span class="sub">thay cho gợi ý cùng loại</span></h3>
+    ${list.map(t => {
+      if (t.kind === 'style') return `<div class="trow"><div class="trow-h"><b>Phong cách: ${esc(t.from || 'không có')} → ${esc(t.to)}</b><small>${src(t)} · AI chấm hợp ${t.fit_to}%</small></div>
+        <div class="sub">${esc(t.note)}</div></div>`;
+      if (t.kind === 'skill') return `<div class="trow"><div class="trow-h"><b>Kỹ năng: ${esc(t.skill)}</b><small>${src(t)} · AI chấm hợp ${t.fit}%</small></div>
+        <div class="fitbar"><span>Tiến độ</span><b>${t.pct}%</b></div>${pbar(t.pct, 100, '#eab308')}</div>`;
+      return `<div class="trow"><div class="trow-h"><b>Vị trí ${t.position} (${esc(t.position_vi)}): hạng ${t.grade} → ${t.next}</b><small>${src(t)} · độ hợp AI ${t.fit}/100</small></div>
+        <div class="fitbar"><span>Tiến độ${t.eta != null ? ` · còn khoảng ${Math.max(1, Math.round(t.eta / 7))} tuần` : ''}</span><b>${t.pct}%</b></div>${pbar(t.pct, 100, '#22c55e')}
+        ${t.source === 'game' ? '<div class="sub">Tăng khi tập vị trí này trong game hoặc khi ra sân ở vị trí này.</div>' : ''}</div>`;
+    }).join('')}</div>`;
+}
+function dDev(d) {
+  const a = d.advice;
+  if (!a) return '<div class="empty">Không có dữ liệu.</div>';
+  const sug = a.suggestions.map(s => {
+    if (s.kind === 'style') return `<div class="sugg style"><h3>🔄 Nên đổi phong cách thi đấu</h3>
+      <div class="fitbar"><span>${esc(s.from || 'Hiện tại: không có')}</span><b>${s.fit_from}%</b></div>${pbar(s.fit_from, 100, '#64748b')}
+      <div class="fitbar" style="margin-top:6px"><span><b>→ ${esc(s.to)}</b></span><b>${s.fit_to}%</b></div>${pbar(s.fit_to, 100, '#38bdf8')}
+      ${s.why.length ? `<div class="sub" style="margin-top:6px">Điểm mạnh hợp với phong cách này: ${s.why.map(esc).join(', ')}</div>` : ''}
+      <div class="how"><b>Cách làm:</b> ${esc(s.how)}</div></div>`;
+    if (s.kind === 'skill') return `<div class="sugg"><h3>✨ Nên tập kỹ năng: ${esc(s.skill)} <span class="pill" style="margin-left:auto">hợp ${s.fit}%</span></h3>
+      <div class="need">${s.need.map(n => `<span class="${n.value >= n.min ? 'ok' : 'low'}" title="Cầu thủ có kỹ năng này thường có ${n.typical}; 3/4 số đó từ ${n.min} trở lên">${esc(n.ability)} ${n.value} <small>/ thường ${n.typical}</small></span>`).join('')}</div>
+      <div class="sub" style="margin-top:6px">${s.ready ? 'Chỉ số đã đủ, có thể tập ngay.' : 'Nên tăng các chỉ số màu đỏ trước; game chỉ cho học kỹ năng khi chỉ số đạt mức nhất định.'}</div>
+      <div class="how"><b>Cách làm:</b> ${esc(s.how)}</div></div>`;
+    return `<div class="sugg position"><h3>🧭 Nên luyện vị trí: ${s.position} (${esc(s.position_vi)})</h3>
+      <div class="sub">Hạng hiện tại ${s.grade} · độ hợp AI ${s.fit}/100 · OVR ở vị trí này ${s.ovr}</div>
+      <div class="how"><b>Cách làm:</b> ${esc(s.how)}</div></div>`;
+  }).join('') || ((a.training || []).length ? '' : '<div class="note">Hiện chưa có gợi ý thay đổi: phong cách và kỹ năng đang hợp với chỉ số của cầu thủ.</div>');
+  const styles = a.styles.map(s => `<div class="fitbar"><span>${s.current ? '● ' : ''}${esc(s.label)}</span><b>${s.fit}%</b></div>${pbar(s.fit, 100, s.current ? '#94a3b8' : '#38bdf8')}`).join('');
+  const focus = (a.focus || []).map(f => `<span class="pill">${esc(f.ability)} ${f.value}</span>`).join('');
+  return `${devTraining(a)}${sug}<div class="grid g2" style="margin-top:6px">
+    <div class="card"><h3>Phong cách hợp nhất khi đá ${a.pos}</h3>${styles}
+      <div class="sub" style="margin-top:8px">Hiện tại: ${esc(a.style_now || 'không có')} (${a.style_now_fit}%)</div></div>
+    <div class="card"><h3>Nên ưu tiên khi tập luyện</h3><div class="pillrow">${focus || '<span class="sub">—</span>'}</div>
+      <div class="sub" style="margin-top:8px">Các chỉ số giúp tăng OVR ở vị trí ${a.pos} nhiều nhất và vẫn còn dư địa phát triển.</div>
+      <h3 style="margin-top:14px">Kỹ năng đang có (${d.skills.length})</h3><div class="pillrow">${d.skills.map(s => `<span class="pill">${esc(s)}</span>`).join('') || '<span class="sub">Chưa có</span>'}</div>
+      ${d.com.length ? `<h3 style="margin-top:14px">Phong cách MÁY</h3><div class="pillrow">${d.com.map(s => `<span class="pill">${esc(s)}</span>`).join('')}</div>` : ''}</div></div>`;
+}
+function dStats(d) {
+  const start = d.abilities_start;
+  const gk = d.pos === 'GK';
+  const groups = GROUPS.filter(([n]) => gk || n !== 'Thủ môn');
+  return `<div class="grid g2">${groups.map(([name, keys]) => `<div class="card"><h3>${name}</h3><div class="bars">${keys.map(k => {
+      const v = d.abilities[k], s0 = start ? start[k] : null, dv = s0 != null ? v - s0 : 0;
+      return `<div class="row"><span>${AB[k]}</span><b style="text-align:right">${v}</b>${pbar(v - 40, 59, abColor(v))}
+        <span class="delta ${dv > 0 ? 'up' : dv < 0 ? 'down' : 'flat'}">${s0 != null && dv ? (dv > 0 ? '+' : '') + dv : ''}</span></div>`;
+    }).join('')}</div></div>`).join('')}</div>${start ? `<div class="sub" style="margin-top:8px">Số bên phải: thay đổi so với ${esc(d.start_label)}.</div>` : ''}`;
+}
+function dAge(d) {
+  const rows = d.by_age;
+  const peak = rows.reduce((a, b) => b.ovr > a.ovr ? b : a, rows[0]);
+  const keys = d.pos === 'GK' ? ['gk_reflexes', 'gk_reach', 'gk_awareness'] : Object.entries(d.abilities).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k]) => k);
+  let cmp = '';
+  const mine = S.bundle.squad.filter(p => p.pos === d.pos && p.id !== d.id).sort((a, b) => b.ovr - a.ovr)[0];
+  if (mine && d.team !== S.bundle.club.id) {
+    const over = rows.find(r => r.ovr >= mine.ovr);
+    cmp = `<div class="note">So với đội hình: cầu thủ ${d.pos} tốt nhất của bạn là <b>${esc(mine.name)}</b> (OVR ${mine.ovr}, ngưỡng ${mine.peak}).
+      ${over ? (over.age === d.age ? `${esc(d.name)} đã ngang hoặc hơn ngay bây giờ.` : `${esc(d.name)} dự kiến vượt mức ${mine.ovr} vào năm ${over.year} (${over.age} tuổi).`) : `Theo dự đoán, ${esc(d.name)} khó vượt mức ${mine.ovr}.`}
+      Đỉnh ${Math.round(peak.ovr)} ở ${peak.age} tuổi (năm ${peak.year}).</div>`;
+  }
+  return `${cmp}<div class="tbl"><table><thead><tr><th class="num">Tuổi</th><th class="num">Năm</th><th class="num">OVR ${d.pos}</th><th class="num">Khoảng 80%</th>
+    <th>Vị trí tốt nhất</th>${keys.map(k => `<th class="num">${AB[k]}</th>`).join('')}<th></th></tr></thead><tbody>
+    ${rows.map(r => `<tr class="${r === peak ? 'peak' : ''}"><td class="num">${r.age}</td><td class="num">${r.year}</td><td class="num">${ovr(Math.round(r.ovr))}</td>
+      <td class="num"><small>${Math.round(r.low)}–${Math.round(r.high)}</small></td><td>${r.best_pos} <small>${r.best_ovr}</small></td>
+      ${keys.map(k => `<td class="num">${r.abilities[k]}</td>`).join('')}<td>${r === peak ? '<small style="color:var(--gold)">đỉnh</small>' : r.age === d.age ? '<small>hiện tại</small>' : ''}</td></tr>`).join('')}
+    </tbody></table></div><div class="sub" style="margin-top:8px">Dự đoán theo đường cong tuổi của AI cộng tốc độ riêng của cầu thủ (${d.learned ? 'đã học từ dữ liệu' : 'chưa đủ dữ liệu, dùng mức trung bình'}). Khoảng 80%: 8/10 trường hợp rơi vào khoảng này.</div>`;
+}
+function dMatches(d) {
+  if (!d.matches.length) return '<div class="empty">Chưa có trận nào cho CLB của bạn trong mùa này.</div>';
+  return `<div class="tbl"><table><thead><tr><th>Ngày</th><th>Đối thủ</th><th>Giải</th><th class="c">KQ</th><th class="num">Phút</th><th class="num">Điểm</th><th class="num">Bàn</th><th class="num">KT</th></tr></thead><tbody>
+    ${d.matches.map(m => `<tr><td>${vnDate(m.date)}</td><td>${m.venue === 'home' ? '' : '@ '}${esc(m.opp)}</td><td><small>${esc(m.comp)}</small></td>
+      <td class="c">${res(m.outcome)} ${m.score}</td><td class="num">${m.min}</td><td class="num">${m.r10 ?? m.rating ?? ''}</td><td class="num">${m.g || ''}</td><td class="num">${m.a || ''}</td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+function dSimilar(d) {
+  return `<div class="hint">Cầu thủ có bộ chỉ số gần giống nhất trong cùng nhóm vị trí.</div>${playerRows(d.similar, {team: true})}`;
+}
+
+// ------------------------------------------------------------------ events
+try { if (localStorage.getItem('dugout.sideMini') === '1') document.body.classList.add('side-mini'); } catch (e) {}
+document.addEventListener('click', ev => {
+  const t = ev.target;
+  if (t.closest('#brand')) {
+    const on = document.body.classList.toggle('side-mini');
+    try { localStorage.setItem('dugout.sideMini', on ? '1' : '0'); } catch (e) {}
+    return;
+  }
+  const nav = t.closest('#nav button');
+  if (nav) return show(nav.dataset.page);
+  const go = t.closest('[data-go]');
+  if (go) {
+    if (go.dataset.fixtab) { S.fixTab = go.dataset.fixtab; S.dirty.fixtures = true; }
+    if (go.dataset.squadfilter) { S.squadFilter = go.dataset.squadfilter; S.dirty.squad = true; }
+    return show(go.dataset.go);
+  }
+  if (t.closest('#drawer-close') || t.id === 'scrim') return closeDrawer();
+  const rp = t.closest('[data-reply]');
+  if (rp) return sendReply(rp.dataset.reply, rp.dataset.choice, rp);
+  const th = t.closest('[data-thread]');
+  if (th) return openThread(th.dataset.thread);
+  if (t.closest('#conv-back')) {
+    if (S.threadOpen && history.state && history.state.thread) return history.back();
+    S.threadOpen = false; S.dirty.inbox = true; return render('inbox');
+  }
+  const ibt = t.closest('#ib-tabs button, #ib-all');
+  if (ibt) { S.inboxView = ibt.dataset.t; S.dirty.inbox = true; return render('inbox'); }
+  const mt = t.closest('#mt-tabs button');
+  if (mt) { S.matchSel = Number(mt.dataset.t); S.dirty.match = true; return render('match'); }
+  const msec = t.closest('[data-msec]');
+  if (msec) return matchSection(msec.dataset.msec);
+  const dt = t.closest('#d-tabs button');
+  if (dt) { S.drawerTab = dt.dataset.t; return drawDrawer(); }
+  if (t.closest('#lv-land')) return setLiveLand(true);
+  if (t.closest('#lv-x')) return document.body.classList.contains('lv-land') ? setLiveLand(false) : null;
+  const who = t.closest('[data-whois]');
+  if (who) {
+    (async () => {
+      try {
+        const r = await (await post('/api/matchlive/fix', {k: Number(who.dataset.k), pid: Number(who.dataset.whois)})).json();
+        $('#modal').classList.add('hidden');
+        winNote(esc(r.message || 'Đã sửa.'));
+      } catch (e) { winNote('Không gửi được tới Dugout.'); }
+    })();
+    return;
+  }
+  const lvdot = t.closest('#lv-dots .pl');
+  if (lvdot) return liveWhoIs(Number(lvdot.dataset.k), lvdot.dataset.team);
+  const pidEl = t.closest('[data-pid]');
+  if (pidEl && !t.closest('#d-tabs')) return openPlayer(pidEl.dataset.pid, pidEl.dataset.tab);
+  const msg = t.closest('[data-msg]');
+  if (msg) {
+    S.inboxSel = msg.dataset.msg;
+    if (S.page !== 'inbox') {
+      const e = S.bundle.inbox.find(x => x.id === S.inboxSel);
+      if (e && S.inboxView === 'chat') {
+        S.thread = e.from;
+        if (PHONE_Q.matches && !S.threadOpen) {    // the conversation opened at once (back: the list)
+          S.threadOpen = true;
+          try { history.pushState({thread: e.from}, '', location.hash); } catch (err) {}
+        }
+      }
+      S.dirty.inbox = true;
+      return show('inbox');
+    }
+    const e = S.bundle.inbox.find(x => x.id === S.inboxSel);
+    document.querySelectorAll('.msg').forEach(m => m.classList.toggle('sel', m.dataset.msg === S.inboxSel));
+    msg.classList.remove('unread');
+    $('#reader').innerHTML = readerHtml(e);
+    if (!e.read) markRead([e.id]);
+    return;
+  }
+  const inf = t.closest('#inbox-filter button');
+  if (inf) { S.inboxFilter = inf.dataset.f; S.inboxSel = null; S.dirty.inbox = true; return render('inbox'); }
+  if (t.id === 'inbox-more') { S.inboxLimit += 200; S.dirty.inbox = true; return render('inbox'); }
+  if (t.id === 'read-all') { markRead(null); S.dirty.inbox = true; return render('inbox'); }
+  const fxt = t.closest('#fx-tabs button');
+  if (fxt) { S.fixTab = fxt.dataset.t; S.dirty.fixtures = true; return render('fixtures'); }
+  const fx = t.closest('.fx');
+  if (fx && fx.querySelector('.fx-detail')) return fx.classList.toggle('open');
+  const cm = t.closest('.click-match');
+  if (cm) { S.fixTab = 'list'; S.dirty.fixtures = true; show('fixtures'); const el = document.querySelector(`.fx[data-fx="${CSS.escape(cm.dataset.match)}"]`); if (el) { el.classList.add('open'); el.scrollIntoView({block: 'center'}); } return; }
+  const sv = t.closest('#squad-view button');
+  if (sv) { S.squadView = sv.dataset.v; S.dirty.squad = true; return render('squad'); }
+  const sf = t.closest('#squad-filter button');
+  if (sf) { S.squadFilter = sf.dataset.f; S.squadView = 'list'; S.dirty.squad = true; return render('squad'); }
+  const np = t.closest('[data-needpos]');
+  if (np) {
+    S.mq = {pos: np.dataset.needpos, scope: 'others', sort: 'peak', age_max: '26'};
+    S.marketTab = 'search'; S.dirty.market = true; render('market');
+    return runSearch($('#market-form'));
+  }
+  const mk = t.closest('#mk-tabs button');
+  if (mk) { S.marketTab = mk.dataset.t; S.dirty.market = true; return render('market'); }
+  const yt = t.closest('#y-tabs button');
+  if (yt) { S.youthTab = yt.dataset.t; S.dirty.youth = true; return render('youth'); }
+  if (t.id === 'ed-train' || t.dataset.trainStop !== undefined) {
+    const stop = t.dataset.trainStop !== undefined, pos = stop ? Number(t.dataset.trainStop) : Number($('#ed-pos').value);
+    if (!confirm(stop ? `Dừng tập ${POS[pos]} cho ${S.cur.name}?` : `${S.cur.name} bắt đầu tập ${POS[pos]} theo thời gian (khoảng 6 tuần trong game mỗi hạng)?`)) return;
+    post('/api/train-position', {pid: S.cur.id, pos}).then(r => r.json()).then(r => {
+      $('#ed-msg').innerHTML = r.ok ? `<span class="up">✓ ${esc(r.message)}</span>` : `<span class="down">✗ ${esc(r.error)}</span>`;
+      loadEditInfo();
+    });
+    return;
+  }
+  if (t.id === 'ed-style-apply') {
+    const sel = $('#ed-style'), label = sel.options[sel.selectedIndex].text.split(' · ')[0];
+    if (!confirm(`${S.cur.name} đổi sang phong cách ${label}?`)) return;
+    t.disabled = true;
+    post('/api/edit', {pid: S.cur.id, action: 'style', value: Number(sel.value)}).then(r => r.json()).then(r => {
+      t.disabled = false;
+      $('#ed-style-msg').innerHTML = r.ok ? `<span class="up">✓ ${esc(r.message)}</span>` : `<span class="down">✗ ${esc(r.error)}</span>`;
+      loadEditInfo(); loadEditHistory();
+    });
+    return;
+  }
+  if (t.id === 'ed-foot') {
+    if (!confirm(t.textContent + ` cho ${S.cur.name}?`)) return;
+    t.disabled = true;
+    post('/api/foot', {pid: S.cur.id}).then(r => r.json()).then(r => {
+      $('#ed-foot-msg').innerHTML = r.ok ? `<span class="up">✓ ${esc(r.message)}</span>` : `<span class="down">✗ ${esc(r.error)}</span>`;
+      loadEditInfo(); loadEditHistory();
+    });
+    return;
+  }
+  if (t.id === 'ed-apply' || t.id === 'ed-learn') {
+    const sel = $('#ed-pos'), msg = $('#ed-msg');
+    const pos = Number(sel.value), grade = $('#ed-grade').checked, learn = t.id === 'ed-learn', game = gameOpen();
+    const what = learn ? `${S.cur.name} học vị trí ${POS[pos]} (lên 1 hạng: C → B → A)` : `Đổi vị trí đăng ký của ${S.cur.name} thành ${POS[pos]}${grade ? ' (hạng A)' : ''}`;
+    const where = game ? 'Game đang mở: Dugout đổi ngay trong game; thay đổi vào save khi game lưu.' : 'Dugout sẽ sao lưu save gốc rồi sửa save (game phải đang tắt).';
+    if (!confirm(`${what}?\n\n${where}`)) return;
+    t.disabled = true; msg.textContent = 'Đang sửa…';
+    post('/api/edit', {pid: Number(t.dataset.pid), pos, grade_a: grade, action: learn ? 'learn' : 'position'}).then(r => r.json()).then(r => {
+      t.disabled = false;
+      msg.innerHTML = r.ok ? `<span class="up">✓ ${esc(r.message)}</span>${game ? '' : '<br>Dugout đang đọc lại save; mở game và tải save để thấy thay đổi.'}` : `<span class="down">✗ ${esc(r.error)}</span>`;
+      loadEditHistory();
+    }).catch(() => { t.disabled = false; msg.textContent = 'Mất kết nối với Dugout.'; });
+    return;
+  }
+  const undoBtn = t.closest('[data-undo]');
+  if (undoBtn) {
+    if (!confirm(gameOpen() ? 'Hoàn tác lần sửa này? Game đang mở: Dugout ghi lại giá trị cũ ngay trong game (vào save khi game lưu).'
+                            : 'Hoàn tác lần sửa này? Dugout ghi lại giá trị cũ vào save hiện tại (giữ mọi thứ bạn đã chơi sau đó).')) return;
+    undoBtn.disabled = true;
+    post('/api/undo', {id: undoBtn.dataset.undo}).then(r => r.json()).then(r => {
+      alert(r.ok ? r.message : 'Không hoàn tác được: ' + r.error);
+      loadEditHistory();
+      S.aiSig = '';
+    });
+    return;
+  }
+  if (t.id === 'btn-backup') { post('/api/backup'); t.textContent = 'Đang sao lưu…'; setTimeout(() => { t.textContent = 'Sao lưu ngay'; }, 4000); return; }
+  if (t.id === 'btn-open-backup') { post('/api/open-backup'); return; }
+  if (t.closest('#hchip')) return show('ai');
+  if (t.closest('#btn-phone')) return openPhone();
+  if (t.closest('#modal-close') || t.id === 'modal') return $('#modal').classList.add('hidden');
+  const ph = t.closest('[data-ph]');
+  if (ph) {
+    const a = ph.dataset.ph;
+    return phoneAction(a === 'on' ? {on: true} : a === 'off' ? {on: false} : a === 'fw' ? {firewall: true}
+      : a === 'lan' ? {lan: true} : a === 'nolan' ? {lan: false} : {startup: a === 'start'});
+  }
+  const wb = t.closest('[data-win]');
+  if (wb) {
+    const act = wb.dataset.win;
+    if (act === 'howto') return windowHowto();
+    const body = act === 'settings' ? {settings: true} : act === 'wmode' ? {window_mode: true} : act === 'fmode' ? {window_mode: false} : {borderless: act === 'on'};
+    post('/api/window', body).then(r => r.json()).then(d => {
+      S.winSig = '';
+      if (d.error) return winNote(esc(d.error), 9000);
+      if (act === 'settings') winNote('Đã mở Settings của FL26: Display → Screen Mode → Window Mode.');
+      if ((act === 'wmode' || act === 'fmode') && !(d.window && 'setting' in d.window))
+        return winNote('Dugout đang chạy bản cũ: tắt hẳn Dugout (hoặc khởi động lại máy) rồi mở lại, sau đó bấm lại.', 12000);
+      if (act === 'wmode') { $('#modal').classList.add('hidden'); winNote('Xong: FL26 sẽ chạy toàn màn hình không viền từ lần mở game tới.', 9000); }
+      if (act === 'fmode') { $('#modal').classList.add('hidden'); winNote('Đã trả FL26 về Full Screen.'); }
+    });
+    return;
+  }
+  if (t.id === 'btn-train') { post('/api/train'); t.disabled = true; t.textContent = 'Đang huấn luyện…'; return; }
+  if (t.closest('#btn-reload')) { post('/api/reload'); $('#sync-text').textContent = 'Đang đọc lại save…'; $('#sync-dot').className = 'dot syncing'; }
+});
+document.addEventListener('submit', ev => {
+  if (ev.target.id === 'market-form') { ev.preventDefault(); runSearch(ev.target); }
+});
+document.addEventListener('change', ev => {
+  if (ev.target.id === 'fx-comp') { S.fixComp = Number(ev.target.value); S.fixRound = null; S.dirty.fixtures = true; render('fixtures'); }
+  if (ev.target.id === 'fx-round') { S.fixRound = ev.target.value; S.dirty.fixtures = true; render('fixtures'); }
+});
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeDrawer(); });
+
+// deep links: #squad, #fixtures, #player=123&tab=dev
+(function initFromHash() {
+  const h = new URLSearchParams(location.hash.slice(1).replace(/^([a-z]+)$/, 'page=$1'));
+  if (h.get('page')) S.page = h.get('page');
+  if (h.get('fix')) S.fixTab = h.get('fix');
+  if (h.get('view')) S.squadView = h.get('view');
+  if (h.get('m')) S.matchSel = Number(h.get('m'));
+  if (h.get('sec')) S.matchSec = h.get('sec');
+  if (h.get('mk')) S.marketTab = h.get('mk');
+  if (h.get('ib')) S.inboxView = h.get('ib');
+  if (h.get('thread')) { S.thread = h.get('thread'); S.threadOpen = true; }
+  if (h.get('player')) { S.drawer = Number(h.get('player')); S.drawerTab = h.get('tab') || 'overview'; }
+  if (h.get('dlg') === 'phone') setTimeout(openPhone, 0);
+  document.querySelectorAll('#nav button').forEach(x => x.classList.toggle('active', x.dataset.page === S.page));
+  document.querySelectorAll('.page').forEach(x => x.classList.toggle('active', x.id === 'page-' + S.page));
+})();
+loadBundle();
+poll();
