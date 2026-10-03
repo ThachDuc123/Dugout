@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#121821">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dugout">
+<link rel="apple-touch-icon" href="/icon-512.png">
+<link rel="manifest" id="manifest" href="/manifest.webmanifest">
+<script>/* the phone app (https, the tunnel): keep the pairing key, install sw.js (the app keeps working with the
+   PC off, showing the last data) */
+(function () {
+  var k = new URLSearchParams(location.search).get('key');
+  try { if (k) localStorage.setItem('dugout.key', k); else k = localStorage.getItem('dugout.key'); } catch (e) {}
+  if (!k) return;
+  document.getElementById('manifest').href = '/manifest.webmanifest?key=' + encodeURIComponent(k);
+  if (location.protocol === 'https:' && 'serviceWorker' in navigator)
+    navigator.serviceWorker.register('/sw.js?key=' + encodeURIComponent(k), {updateViaCache: 'none'})
+      .then(function (r) { r.update(); }).catch(function () {});
+})();</script>
+<title>Dugout</title>
+<link rel="icon" href="/icon.png">
+<link rel="stylesheet" href="/m/m.css">
+</head>
+<body>
+<div class="app">
+  <header class="hdr" id="hdr"></header>
+  <main class="page" id="page"></main>
+  <nav class="tabbar" id="tabbar"></nav>
+</div>
+<div class="toast" id="toast"></div>
+<div class="splash" id="splash"><img src="/icon-512.png" alt=""><div>Đang mở Dugout…</div></div>
+<script src="/m/m.js"></script>
+</body>
+</html>

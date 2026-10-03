@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#121821">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Dugout">
+<link rel="apple-touch-icon" href="icon-512.png">
+<link rel="manifest" id="manifest" href="manifest.webmanifest">
+<script>/* on the phone (https, the tunnel): keep the pairing key, install sw.js (the app keeps working
+   with the PC off, showing the last data) */
+(function () {
+  var k = new URLSearchParams(location.search).get('key');
+  try { if (k) localStorage.setItem('dugout.key', k); else k = localStorage.getItem('dugout.key'); } catch (e) {}
+  if (!k) return;
+  document.getElementById('manifest').href = 'manifest.webmanifest?key=' + encodeURIComponent(k);
+  if (location.protocol === 'https:' && 'serviceWorker' in navigator)
+    navigator.serviceWorker.register('sw.js?key=' + encodeURIComponent(k), {updateViaCache: 'none'})
+      .then(function (r) { r.update(); }).catch(function () {});
+})();</script>
+<title>FL26 Dugout</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect rx='7' width='32' height='32' fill='%2322c55e'/%3E%3Cpath d='M6 20h20v4H6zM9 12h14v6H9z' fill='%23052e16'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand" id="brand" title="Thu gọn / mở rộng thanh bên">
+      <div class="logo"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11.2" class="ball"/><path class="pent" d="M16 11.8L20 14.7L18.5 19.4H13.5L12 14.7Z"/><path class="seam" d="M16 11.8V4.9M20 14.7L26.6 12.6M18.5 19.4L22.6 25M13.5 19.4L9.4 25M12 14.7L5.4 12.6"/><clipPath id="lgc"><circle cx="16" cy="16" r="11.2"/></clipPath><path class="pent" clip-path="url(#lgc)" d="M20.88 9.29L18.29 4.22L26.5 10.18ZM23.89 18.56L27.91 14.54L24.78 24.18ZM16 24.3L21.07 26.88H10.93ZM8.11 18.56L7.22 24.18L4.09 14.54ZM11.12 9.29L5.5 10.18L13.71 4.22Z"/><circle cx="16" cy="16" r="11.2" class="rim"/></svg></div>
+      <div class="lbl"><b>Dugout</b><small>FL26 · Master League</small></div>
+    </div>
+    <div class="club" id="club"></div>
+    <nav id="nav">
+      <button data-page="home" class="active"><i>⌂</i><span class="lbl">Trang chủ</span></button>
+      <button data-page="inbox"><i>✉</i><span class="lbl">Hộp thư</span><span class="badge" id="nb-inbox"></span></button>
+      <button data-page="match"><i>⚔</i><span class="lbl">Trận tới</span><span class="badge soft" id="nb-match"></span></button>
+      <button data-page="live"><i>◉</i><span class="lbl">Trực tiếp</span><span class="badge livebadge" id="nb-live"></span></button>
+      <button data-page="fixtures"><i>▦</i><span class="lbl">Lịch thi đấu</span></button>
+      <button data-page="squad"><i>☰</i><span class="lbl">Đội hình</span><span class="badge soft" id="nb-squad"></span></button>
+      <button data-page="market"><i>⇄</i><span class="lbl">Chuyển nhượng</span></button>
+      <button data-page="youth"><i>✿</i><span class="lbl">Đội trẻ &amp; Regen</span></button>
+      <button data-page="ai"><i>◎</i><span class="lbl">AI dự đoán</span></button>
+    </nav>
+    <div class="side-acts">
+      <button data-act="phone" class="sa-phone" title="Xem Dugout trên điện thoại (quét mã QR)"><i>📱</i><span class="lbl">Điện thoại</span></button>
+      <button data-act="reload" title="Đọc lại save ngay"><i>↻</i><span class="lbl">Đọc lại save</span></button>
+    </div>
+    <div class="side-foot" id="side-foot"></div>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <div class="today" id="today">Đang mở…</div>
+      <div class="live" id="live"></div>
+      <button class="hchip hidden" id="hchip" title="Xem kết quả kiểm tra dữ liệu"></button>
+      <span class="savechip" id="savechip"></span>
+      <span class="winchip hidden" id="winchip"></span>
+      <div class="sync"><span class="dot" id="sync-dot"></span><span id="sync-text">Đang khởi động…</span></div>
+      <button class="ghost tb-act" id="btn-phone" data-act="phone" title="Xem Dugout trên điện thoại">📱</button>
+      <button class="ghost tb-act" id="btn-reload" data-act="reload" title="Đọc lại save ngay">↻</button>
+    </header>
+    <div class="hbar hidden" id="hbar"></div>
+    <section class="page active" id="page-home"></section>
+    <section class="page" id="page-inbox"></section>
+    <section class="page" id="page-match"></section>
+    <section class="page" id="page-live"></section>
+    <section class="page" id="page-fixtures"></section>
+    <section class="page" id="page-squad"></section>
+    <section class="page" id="page-market"></section>
+    <section class="page" id="page-youth"></section>
+    <section class="page" id="page-ai"></section>
+  </div>
+</div>
+
+<div class="scrim hidden" id="scrim"></div>
+<aside class="drawer hidden" id="drawer">
+  <button class="close" id="drawer-close" title="Đóng (Esc)">×</button>
+  <div id="drawer-body"></div>
+</aside>
+<div class="modal hidden" id="modal"><div class="modal-box"><button class="close" id="modal-close" title="Đóng">×</button><div id="modal-body"></div></div></div>
+<div class="splash" id="splash"><div class="logo big"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="11.2" class="ball"/><path class="pent" d="M16 11.8L20 14.7L18.5 19.4H13.5L12 14.7Z"/><path class="seam" d="M16 11.8V4.9M20 14.7L26.6 12.6M18.5 19.4L22.6 25M13.5 19.4L9.4 25M12 14.7L5.4 12.6"/><clipPath id="lgc"><circle cx="16" cy="16" r="11.2"/></clipPath><path class="pent" clip-path="url(#lgc)" d="M20.88 9.29L18.29 4.22L26.5 10.18ZM23.89 18.56L27.91 14.54L24.78 24.18ZM16 24.3L21.07 26.88H10.93ZM8.11 18.56L7.22 24.18L4.09 14.54ZM11.12 9.29L5.5 10.18L13.71 4.22Z"/><circle cx="16" cy="16" r="11.2" class="rim"/></svg></div><div>Đang mở Dugout…</div></div>
+<script src="app.js"></script>
+</body>
+</html>
