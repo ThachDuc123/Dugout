@@ -1,0 +1,447 @@
+"""Local web app: http://127.0.0.1:<port>, opened as its own window next to the game.
+Nothing is written to the game or the save."""
+import gzip
+import json
+import mimetypes
+import os
+import re
+import sys
+import threading
+import time
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+from . import config
+
+ENGINE = None
+PHONE = None                 # the server for phones (phone.PhoneServer: tunnel, optionally home network)
+_IMG_LOCK = threading.Lock()
+LAST_SEEN = [0.0]            # last time the app window asked for status
+IDLE_EXIT_SECONDS = 300      # the window was closed: stop the background server
+
+
+def face_png(pid):
+    cached = os.path.join(config.FACE_CACHE, f'{pid}.png')
+    if os.path.exists(cached):
+        return cached
+    src = config.miniface_path(pid)
+    if not src:
+        return None
+    from PIL import Image
+    with _IMG_LOCK:
+        if not os.path.exists(cached):
+            tmp = cached + '.tmp.png'
+            Image.open(src).convert('RGBA').save(tmp)
+            os.replace(tmp, cached)
+    return cached
+
+
+def badge_png(team_id):
+    return config.badge_path(team_id)
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
+    cookie = None            # Set-Cookie of the current answer (phone pairing)
+
+    def log_message(self, *a):
+        pass
+
+    def _remote(self):
+        """A phone (through PhoneHandler), not the PC's own window."""
+        return False
+
+    def handle(self):
+        try:
+            super().handle()
+        except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+            pass                     # the window was closed mid-request
+
+    def _send(self, body, ctype, code=200, cache=None, gz=False):
+        self.send_response(code)
+        self.send_header('Content-Type', ctype)
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', cache or 'no-store')
+        if self.cookie:
+            self.send_header('Set-Cookie', self.cookie)
+            self.cookie = None
+        if self._remote():           # the phone app (sw.js) may run on an older tunnel address
+            self.send_header('Access-Control-Allow-Origin', '*')
+        if gz:
+            self.send_header('Content-Encoding', 'gzip')
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _json(self, obj, code=200):
+        body = json.dumps(obj, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
+        if len(body) > 4096 and 'gzip' in (self.headers.get('Accept-Encoding') or ''):
+            # the live map on the phone (through the tunnel, several times a second): a few KB instead of tens
+            return self._send(gzip.compress(body, 5), 'application/json; charset=utf-8', code, gz=True)
+        self._send(body, 'application/json; charset=utf-8', code)
+
+    def _file(self, path, ctype=None, cache=None):
+        data = open(path, 'rb').read()
+        self._send(data, ctype or mimetypes.guess_type(path)[0] or 'application/octet-stream', cache=cache)
+
+    def _body(self):
+        n = int(self.headers.get('Content-Length') or 0)
+        if not n:
+            return {}
+        try:
+            return json.loads(self.rfile.read(n).decode('utf-8'))
+        except ValueError:
+            return {}
+
+    def do_POST(self):
+        # every change comes from Dugout's own page: a custom header, which another site's page
+        # cannot send to this address without the server allowing it
+        if self.headers.get('X-Dugout') != '1':
+            return self._json({'error': 'forbidden'}, 403)
+        body = self._body()
+        if self.path == '/api/train':
+            threading.Thread(target=ENGINE.train, daemon=True).start()
+            return self._json({'ok': True})
+        if self.path == '/api/reload':
+            ENGINE.reload()
+            return self._json({'ok': True})
+        if self.path == '/api/matchlive/fix':        # the manager says who a dot on the live map is
+            from . import matchlive
+            t = matchlive.TRACKER
+            return self._json({'ok': True, 'message': t.fix(body.get('k'), body.get('pid')) if t else 'Bản đồ trận chưa chạy.'})
+        if self.path == '/api/read':
+            ENGINE.mark_read(body.get('ids'))
+            return self._json({'ok': True})
+        if self.path == '/api/reply':
+            out = ENGINE.reply(body.get('id'), body.get('choice'))
+            return self._json({'ok': bool(out), **(out or {})})
+        if self.path in ('/api/edit', '/api/undo', '/api/foot', '/api/train-position'):
+            from .edit import EditError
+            from .gamemem import MemError
+            try:
+                if self.path == '/api/edit':
+                    action = body.get('action') if body.get('action') in ('learn', 'style') else 'position'
+                    out = ENGINE.edit_position(body.get('pid'), body.get('pos'), body.get('grade_a', True), action,
+                                               body.get('value'))
+                elif self.path == '/api/foot':
+                    out = ENGINE.set_foot(body.get('pid'))
+                elif self.path == '/api/train-position':
+                    out = ENGINE.train_position(body.get('pid'), body.get('pos'))
+                else:
+                    out = ENGINE.undo_edit(str(body.get('id') or ''))
+                return self._json({'ok': True, 'message': out.get('message', ''), 'changed': out.get('changed', 0)})
+            except (EditError, MemError, ValueError) as exc:
+                return self._json({'ok': False, 'error': str(exc)})
+            except Exception as exc:
+                import traceback
+                traceback.print_exc()
+                return self._json({'ok': False, 'error': 'Lỗi khi sửa save (save không bị ghi): ' + repr(exc)})
+        if self.path == '/api/backup':
+            ENGINE.request_backup()
+            return self._json({'ok': True})
+        if self.path in ('/api/phone', '/api/window', '/api/open-backup') and self._remote():
+            return self._json({'error': 'forbidden'}, 403)          # PC-only settings
+        if self.path == '/api/phone':
+            from . import phone
+            if 'on' in body:
+                if body['on']:
+                    PHONE.start(body.get('lan'))
+                else:
+                    PHONE.stop()
+            elif 'lan' in body and PHONE.on:
+                PHONE.start(bool(body['lan']))
+            if body.get('firewall'):
+                phone.open_firewall(PHONE.port)
+            if 'startup' in body:
+                try:
+                    phone.set_startup(bool(body['startup']))
+                except Exception as exc:
+                    return self._json({'ok': False, 'error': f'Không tạo được lối tắt khởi động: {exc}', **PHONE.info()})
+            return self._json({'ok': not PHONE.error, 'error': PHONE.error, **PHONE.info()})
+        if self.path == '/api/window':                 # the game as a borderless window (see window.py)
+            from . import window
+            k = window.start()
+            if 'borderless' in body:
+                k.set_enabled(bool(body['borderless']))
+            if 'window_mode' in body:                  # the game's own setting (settings.dat)
+                try:
+                    window.set_screen_mode(bool(body['window_mode']))
+                except (ValueError, OSError) as exc:
+                    return self._json({'ok': False, 'error': str(exc)})
+                k._setting = (0.0, None)
+                if body['window_mode'] and not k.enabled:
+                    k.set_enabled(True)
+                k.step()
+            if body.get('settings'):                   # FL26's own Settings.exe (Screen Mode)
+                exe = os.path.join(config.GAME_DIR, 'Settings.exe')
+                if not os.path.exists(exe):
+                    return self._json({'ok': False, 'error': 'Không thấy Settings.exe trong thư mục game.'})
+                import subprocess
+                subprocess.Popen([exe], cwd=config.GAME_DIR)
+            return self._json({'ok': True, 'window': k.state})
+        if self.path == '/api/open-backup':           # the manager clicked "open the backup folder"
+            folder = (ENGINE.backup_info or {}).get('dir')
+            if folder and not os.path.isdir(folder):
+                folder = (ENGINE.backup_info or {}).get('root')
+            if folder and os.path.isdir(folder):
+                os.startfile(folder)
+                return self._json({'ok': True})
+            return self._json({'ok': False, 'error': 'Chưa có bản sao lưu nào.'})
+        self._json({'error': 'not found'}, 404)
+
+    def do_GET(self):
+        url = urllib.parse.urlparse(self.path)
+        q = {k: v[0] for k, v in urllib.parse.parse_qs(url.query).items()}
+        path = url.path
+        try:
+            if path == '/api/status':
+                LAST_SEEN[0] = time.time()          # the PC window or the phone is still open
+                from . import window
+                from . import matchlive
+                return self._json({**ENGINE.status_json(), 'app': 'dugout', 'window': window.status(), 'build': web_build(),
+                                   'remote': self._remote(), 'phone_on': bool(PHONE and PHONE.on),
+                                   'matchlive': matchlive.TRACKER.brief() if matchlive.TRACKER else None})
+            if path == '/api/matchlive':                 # the live match map (matchlive.py)
+                from . import matchlive
+                t = matchlive.TRACKER
+                return self._json(t.payload(q.get('since'), lite=q.get('lite') == '1') if t
+                                  else {'state': 'off', 'message': 'Chưa bật.'})
+            if path == '/api/matchlive/info':            # the fixture, the pre-match analysis, who is who
+                from . import matchlive
+                t = matchlive.TRACKER
+                return self._json(t.info() if t else {})
+            if path == '/api/phone':
+                if self._remote():
+                    return self._json({'error': 'forbidden'}, 403)
+                return self._json(PHONE.info())
+            if path == '/manifest.webmanifest':      # the phone app: standalone (the user keeps the phone's clock bar)
+                start = f'./?key={q["key"]}' if self._remote() and q.get('key') else './'
+                return self._send(json.dumps({
+                    'name': 'FL26 Dugout', 'short_name': 'Dugout', 'start_url': start, 'scope': './',
+                    'display': 'standalone',
+                    'background_color': '#0b0f14', 'theme_color': '#121821',
+                    'icons': [{'src': 'icon.png', 'sizes': '256x256', 'type': 'image/png'},
+                              {'src': 'icon-512.png', 'sizes': '512x512', 'type': 'image/png', 'purpose': 'any maskable'}]},
+                    ensure_ascii=False).encode('utf-8'),
+                    'application/manifest+json; charset=utf-8')
+            if path == '/api/bundle':
+                raw, gz = ENGINE.bundle_bytes, ENGINE.bundle_gz
+                if raw is None:
+                    return self._json({'error': 'loading'}, 503)
+                if gz is not None and 'gzip' in (self.headers.get('Accept-Encoding') or ''):
+                    return self._send(gz, 'application/json; charset=utf-8', gz=True)
+                return self._send(raw, 'application/json; charset=utf-8')
+            if path == '/api/unread':                     # read on the phone: no unread count left on the PC
+                return self._json({'ids': ENGINE.unread_ids()})
+            if path == '/api/live':
+                return self._json(ENGINE.live.data())
+            if path == '/api/edits':
+                return self._json(ENGINE.edits())
+            if path.startswith('/api/') and ENGINE.snap is None:
+                return self._json({'error': 'loading'}, 503)
+            if path == '/api/search':
+                return self._json(ENGINE.search(q))
+            if path == '/api/plan':
+                d = ENGINE.summer_plan()
+                return self._json(d) if d else self._json({'error': 'loading'}, 503)
+            m = re.fullmatch(r'/api/edit-info/(\d+)', path)
+            if m:
+                d = ENGINE.edit_info(int(m.group(1)))
+                return self._json(d) if d else self._json({'error': 'not found'}, 404)
+            m = re.fullmatch(r'/api/player/(\d+)', path)
+            if m:
+                d = ENGINE.detail(int(m.group(1)))
+                return self._json(d) if d else self._json({'error': 'not found'}, 404)
+            m = re.fullmatch(r'/face/(\d+)\.png', path)
+            if m:
+                p = face_png(int(m.group(1)))
+                return self._file(p, 'image/png', cache='max-age=604800') if p else self._send(b'', 'image/png', 404)
+            m = re.fullmatch(r'/badge/(\d+)\.png', path)
+            if m:
+                p = badge_png(int(m.group(1)))
+                return self._file(p, 'image/png', cache='max-age=604800') if p else self._send(b'', 'image/png', 404)
+            # the phone (through the tunnel / its own port) gets its own app (web/m), the PC the full one; the
+            # phone app can also be looked at on the PC at /m/
+            if path in ('/', ''):
+                rel = 'm/index.html' if self._remote() else 'index.html'
+            elif path in ('/m', '/m/'):
+                rel = 'm/index.html'
+            else:
+                rel = path.lstrip('/')
+            full = os.path.normpath(os.path.join(config.WEB_DIR, rel))
+            if full.startswith(config.WEB_DIR) and os.path.isfile(full):
+                return self._file(full)
+            self._json({'error': 'not found'}, 404)
+        except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+            pass
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            try:
+                self._json({'error': repr(exc)}, 500)
+            except OSError:
+                pass
+
+
+class PhoneHandler(Handler):
+    """The same app for a phone on the home network: every request must carry the pairing key
+    (the QR code's ?key=..., then a cookie)."""
+
+    def _remote(self):
+        return True
+
+    def _paired(self):
+        from . import phone
+        import secrets
+        k = phone.key()
+        if secrets.compare_digest(self.headers.get('X-Dugout-Key') or '', k):
+            return True                                  # the phone app (sw.js)
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        if secrets.compare_digest(q.get('key', [''])[0], k):
+            self.cookie = f'{phone.COOKIE}={k}; Max-Age=31536000; Path=/; HttpOnly; SameSite=Lax'
+            return True
+        for part in (self.headers.get('Cookie') or '').split(';'):
+            name, _, value = part.strip().partition('=')
+            if name == phone.COOKIE and secrets.compare_digest(value, k):
+                return True
+        return False
+
+    def do_GET(self):
+        self.cookie = None
+        if not self._paired():
+            body = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+                    '<title>FL26 Dugout</title><body style="background:#0b0f14;color:#e7edf4;font:16px system-ui;padding:24px">'
+                    '<h2>FL26 Dugout</h2><p>Điện thoại này chưa được ghép với Dugout.</p>'
+                    '<p>Trên máy tính: mở Dugout → nút <b>📱 Điện thoại</b> → quét mã QR bằng camera điện thoại.</p>').encode('utf-8')
+            return self._send(body, 'text/html; charset=utf-8', 403)
+        return super().do_GET()
+
+    def do_POST(self):
+        self.cookie = None
+        if not self._paired():
+            return self._json({'error': 'forbidden'}, 403)
+        return super().do_POST()
+
+    def do_OPTIONS(self):            # CORS preflight of the phone app
+        self.send_response(204)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'X-Dugout, X-Dugout-Key, Content-Type')
+        self.send_header('Access-Control-Max-Age', '86400')
+        self.send_header('Content-Length', '0')
+        self.end_headers()
+
+
+_BUILD = [0.0, '']
+
+
+def web_build():
+    """A stamp of the web app's files: when it changes (Dugout was updated), the open pages - the
+    phone app too - reload themselves."""
+    if time.time() - _BUILD[0] > 5:
+        h = 0
+        names = sorted(os.listdir(config.WEB_DIR))
+        try:                                     # the phone's own app
+            names += ['m/' + n for n in sorted(os.listdir(os.path.join(config.WEB_DIR, 'm')))]
+        except OSError:
+            pass
+        for name in names:
+            try:
+                st = os.stat(os.path.join(config.WEB_DIR, name))
+            except OSError:
+                continue
+            h = (h * 31 + int(st.st_mtime) * 7 + st.st_size) % (1 << 48)
+        _BUILD[0], _BUILD[1] = time.time(), format(h, 'x')
+    return _BUILD[1]
+
+
+def _running_instance(port):
+    """URL of a Dugout already running on this PC, if any."""
+    import urllib.request
+    for p in range(port, port + 20):
+        try:
+            with urllib.request.urlopen(f'http://127.0.0.1:{p}/api/status', timeout=0.4) as r:
+                if json.loads(r.read().decode('utf-8')).get('app') == 'dugout':
+                    return f'http://127.0.0.1:{p}/'
+        except (OSError, ValueError):
+            continue
+    return None
+
+
+def _watchdog():
+    while True:
+        time.sleep(15)
+        game = ENGINE is not None and (ENGINE.game_on or time.time() - ENGINE.ingame.game_left < IDLE_EXIT_SECONDS)
+        if game:
+            continue                     # the in-game page needs Dugout while FL26 runs
+        if '--from-game' in sys.argv and not LAST_SEEN[0]:
+            print('Game đã tắt: tắt Dugout (được mở từ trong game).', flush=True)
+            _exit()
+        if LAST_SEEN[0] and time.time() - LAST_SEEN[0] > IDLE_EXIT_SECONDS:
+            print('Cửa sổ Dugout đã đóng: tắt.', flush=True)
+            _exit()
+
+
+def _exit():
+    from . import window
+    if window.KEEPER is not None:
+        window.KEEPER.release()
+    if PHONE is not None:
+        PHONE.tunnel.stop()
+    os._exit(0)
+
+
+def main(port=8770, open_window=True):
+    global ENGINE
+    if sys.stdout is None or 'pythonw' in os.path.basename(sys.executable).lower():
+        log = open(os.path.join(config.DATA_DIR, 'dugout.log'), 'a', encoding='utf-8', buffering=1)
+        sys.stdout = sys.stderr = log
+    else:
+        sys.stdout.reconfigure(encoding='utf-8')
+    running = _running_instance(port)
+    if running:                      # already open: just bring the window back
+        if open_window:
+            _open(running)
+        return
+    httpd = None
+    for p in range(port, port + 20):
+        try:
+            httpd = ThreadingHTTPServer(('127.0.0.1', p), Handler)
+            break
+        except OSError:
+            continue
+    httpd.daemon_threads = True
+    url = f'http://127.0.0.1:{p}/'
+    from .engine import Engine
+    ENGINE = Engine()               # serves the cached bundle at once, decodes in the background
+    from . import phone, window
+    window.start()                  # the full-screen game stays in front when Dugout's window is clicked
+    from . import matchlive
+    matchlive.start(ENGINE)         # the live match map (reads the game during a match)
+    global PHONE
+    PHONE = phone.PhoneServer(PhoneHandler, p + 1, log=lambda m: print(time.strftime('%H:%M:%S'), m, flush=True))
+    if config.settings().get('phone'):
+        PHONE.start()               # "Xem trên điện thoại" was left on
+    print('FL26 Dugout đang chạy tại', url, flush=True)
+    if open_window:
+        threading.Thread(target=_open, args=(url,), daemon=True).start()
+        threading.Thread(target=_watchdog, daemon=True).start()
+    httpd.serve_forever()
+
+
+def _open(url):
+    import shutil
+    import subprocess
+    import webbrowser
+    edge = shutil.which('msedge') or next((p for p in (
+        r'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe',
+        r'C:\Program Files\Microsoft\Edge\Application\msedge.exe') if os.path.exists(p)), None)
+    if edge:   # a separate app window, easy to keep next to the game
+        profile = os.path.join(config.DATA_DIR, 'window')
+        subprocess.Popen([edge, f'--app={url}', '--window-size=1440,920', f'--user-data-dir={profile}',
+                          '--no-first-run', '--disable-features=Translate'])
+    else:
+        webbrowser.open(url)
+
+
+if __name__ == '__main__':
+    main(open_window='--no-window' not in sys.argv)
